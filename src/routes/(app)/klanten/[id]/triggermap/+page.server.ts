@@ -2,13 +2,14 @@ import { fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { bouwIntakeTekst, genereerTriggerMap } from '$lib/server/trigger-map-generator';
 import { CLAUDE_MODEL } from '$lib/server/claude';
-import { BRON1_VRAGEN } from '$lib/intake-vragen';
+import { BRON1_DREMPEL } from '$lib/intake-vragen';
 import { heeftInhoud } from '$lib/progress';
 import type { Json } from '$lib/supabase/database.types';
 
+/** Voldoende Bron 1-input om een zinnige trigger map te genereren (drempel, niet alles). */
 function bron1Volledig(rows: Array<{ vraag_nummer: number; antwoord: string | null }>): boolean {
-	const ingevuld = new Set(rows.filter((r) => heeftInhoud(r.antwoord)).map((r) => r.vraag_nummer));
-	return BRON1_VRAGEN.every((v) => ingevuld.has(v.nummer));
+	const aantal = rows.filter((r) => r.vraag_nummer > 0 && heeftInhoud(r.antwoord)).length;
+	return aantal >= BRON1_DREMPEL;
 }
 
 export const load: PageServerLoad = async ({ params, locals: { supabase } }) => {
@@ -46,7 +47,9 @@ export const actions: Actions = {
 		]);
 
 		if (!bron1Volledig(b1.data ?? [])) {
-			return fail(400, { foutmelding: 'Vul eerst Bron 1 (Klantgesprek) volledig in.' });
+			return fail(400, {
+				foutmelding: `Vul eerst minimaal ${BRON1_DREMPEL} vragen van Bron 1 (Klantgesprek) in.`
+			});
 		}
 
 		const intakeTekst = bouwIntakeTekst({

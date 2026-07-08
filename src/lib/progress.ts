@@ -2,8 +2,8 @@
 
 /** Doelwaarden per bron waarop 100% wordt bereikt. */
 export const INTAKE_DOELEN = {
-	bron1: 12, // 12 vragen in het klantgesprek
-	bron2: 5, // 5 vragen interne interviews
+	bron1: 20, // streefwaarde klantgesprek (van ~39 vragen; niet alles hoeft)
+	bron2: 10, // streefwaarde interne interviews (van 16 vragen)
 	bron3: 3, // minimaal 3 concurrenten
 	bron4: 3, // minimaal 3 bronnen met tekst
 	bron5: 4 // 4 velden eigen data

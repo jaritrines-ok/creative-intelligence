@@ -16,7 +16,8 @@
 		{ label: 'Overzicht', href: base },
 		{ label: 'Intake', href: `${base}/intake` },
 		{ label: 'Trigger Map', href: `${base}/triggermap` },
-		{ label: 'Matrix', href: `${base}/matrix` }
+		{ label: 'Matrix', href: `${base}/matrix` },
+		{ label: 'Sprint', href: `${base}/sprint` }
 	]);
 
 	function tabActief(href: string): boolean {

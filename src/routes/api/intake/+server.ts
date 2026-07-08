@@ -1,8 +1,17 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { Database } from '$lib/supabase/database.types';
+import { BRON1_VRAGEN, BRON2_VRAGEN } from '$lib/intake-vragen';
+import { parseIntakeDocument } from '$lib/server/intake-parser';
+import { CLAUDE_MODEL } from '$lib/server/claude';
 
 type Bron5Insert = Database['public']['Tables']['intake_bron5']['Insert'];
+
+const BRON1_NUMMERS = new Set(BRON1_VRAGEN.map((v) => v.nummer));
+const BRON2_NUMMERS = new Set(BRON2_VRAGEN.map((v) => v.nummer));
+
+/** Maximale lengte van een aangeleverd document (tekens) om runaway-kosten te voorkomen. */
+const MAX_DOC_LENGTE = 100_000;
 
 const BRON3_VELDEN = [
 	'naam',
@@ -47,7 +56,7 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 			const tabel = type === 'bron1' ? 'intake_bron1' : 'intake_bron2';
 			const clientId = String(body.clientId ?? '');
 			const vraagNummer = Number(body.vraagNummer);
-			const max = type === 'bron1' ? 12 : 5;
+			const max = type === 'bron1' ? BRON1_VRAGEN.length : BRON2_VRAGEN.length;
 			const min = type === 'bron1' ? 1 : 0; // bron2: 0 = "niet beschikbaar"-sentinel
 			if (!clientId || !Number.isInteger(vraagNummer) || vraagNummer < min || vraagNummer > max) {
 				error(400, 'Ongeldige vraag');
@@ -114,7 +123,85 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 			return json({ ok: true });
 		}
 
+		case 'parse': {
+			const clientId = String(body.clientId ?? '');
+			const tekst = String(body.tekst ?? '').trim();
+			if (!clientId) error(400, 'Ontbrekende klant');
+			if (tekst.length < 20) error(400, 'Document is te kort om te analyseren.');
+			if (tekst.length > MAX_DOC_LENGTE) {
+				error(400, `Document is te lang (max ${MAX_DOC_LENGTE.toLocaleString('nl-NL')} tekens).`);
+			}
+
+			try {
+				const res = await parseIntakeDocument(tekst);
+
+				await sb.from('ai_logs').insert({
+					client_id: clientId,
+					gebruiker_id: user.id,
+					module: 'intake_parse',
+					model: res.model,
+					prompt: res.prompt,
+					response: res.response,
+					tokens_input: res.tokensInput,
+					tokens_output: res.tokensOutput,
+					duur_ms: res.duurMs
+				});
+
+				// Alleen geldige, gevulde antwoorden op bekende vraagnummers teruggeven.
+				const filter = (
+					lijst: Array<{ vraag_nummer: number; antwoord: string }> | undefined,
+					geldig: Set<number>
+				) =>
+					(lijst ?? [])
+						.filter((a) => geldig.has(a.vraag_nummer) && a.antwoord && a.antwoord.trim().length > 0)
+						.map((a) => ({ vraag_nummer: a.vraag_nummer, antwoord: a.antwoord.trim() }));
+
+				return json({
+					bron1: filter(res.data.bron1, BRON1_NUMMERS),
+					bron2: filter(res.data.bron2, BRON2_NUMMERS)
+				});
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : 'onbekende fout';
+				await sb.from('ai_logs').insert({
+					client_id: clientId,
+					gebruiker_id: user.id,
+					module: 'intake_parse',
+					model: CLAUDE_MODEL,
+					response: 'FOUT: ' + msg
+				});
+				error(500, 'Document analyseren mislukt: ' + msg);
+			}
+			break;
+		}
+
+		case 'bulk': {
+			const clientId = String(body.clientId ?? '');
+			const bron = String(body.bron ?? '');
+			if (!clientId) error(400, 'Ontbrekende klant');
+			if (bron !== 'bron1' && bron !== 'bron2') error(400, 'Ongeldige bron');
+
+			const geldig = bron === 'bron1' ? BRON1_NUMMERS : BRON2_NUMMERS;
+			const rijen = Array.isArray(body.antwoorden) ? body.antwoorden : [];
+			const payload = rijen
+				.map((r: unknown) => {
+					const o = (r ?? {}) as Record<string, unknown>;
+					const nummer = Number(o.vraag_nummer);
+					return { client_id: clientId, vraag_nummer: nummer, antwoord: String(o.antwoord ?? '') };
+				})
+				.filter((r: { vraag_nummer: number }) => Number.isInteger(r.vraag_nummer) && geldig.has(r.vraag_nummer));
+			if (payload.length === 0) return json({ ok: true, aantal: 0 });
+
+			const tabel = bron === 'bron1' ? 'intake_bron1' : 'intake_bron2';
+			const { error: dbFout } = await sb
+				.from(tabel)
+				.upsert(payload, { onConflict: 'client_id,vraag_nummer' });
+			if (dbFout) error(500, dbFout.message);
+			return json({ ok: true, aantal: payload.length });
+		}
+
 		default:
 			error(400, 'Onbekend type');
 	}
+
+	error(500, 'Onbereikbaar');
 };

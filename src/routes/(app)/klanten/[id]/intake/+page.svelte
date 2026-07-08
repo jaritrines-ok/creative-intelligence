@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
+	import { Textarea } from '$lib/components/ui/textarea';
 	import { Label } from '$lib/components/ui/label';
 	import AutoSaveField from '$lib/components/app/AutoSaveField.svelte';
 	import { saver, postIntake } from '$lib/intake-saver.svelte';
@@ -17,6 +18,9 @@
 	import Check from '@lucide/svelte/icons/check';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import Upload from '@lucide/svelte/icons/upload';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import X from '@lucide/svelte/icons/x';
 
 	let { data } = $props();
 	let clientId = $derived(data.client.id);
@@ -139,24 +143,151 @@
 		{ key: 'tiktok_observaties', label: 'TikTok Creative Center observaties (optioneel)' },
 		{ key: 'kansen', label: 'Wat doen zij NIET wat een kans is?' }
 	];
+
+	// ---- Document uploaden → intake automatisch invullen ----
+	type ParseBron = 'bron1' | 'bron2';
+	interface GeparseerdAntwoord {
+		vraag_nummer: number;
+		antwoord: string;
+	}
+	const B1 = new Map(BRON1_VRAGEN.map((v) => [v.nummer, v]));
+	const B2 = new Map(BRON2_VRAGEN.map((v) => [v.nummer, v]));
+
+	let uploadOpen = $state(false);
+	let docTekst = $state('');
+	let bestandNaam = $state('');
+	let parsing = $state(false);
+	let toepassen = $state(false);
+	let parseFout = $state<string | null>(null);
+	let voorstel = $state<{ bron1: GeparseerdAntwoord[]; bron2: GeparseerdAntwoord[] } | null>(null);
+	let gekozen = $state<Set<string>>(new Set());
+	// Reseed-teller: forceert AutoSaveField-velden opnieuw te renderen na toepassen.
+	let reseed = $state(0);
+
+	function sleutel(bron: ParseBron, nummer: number) {
+		return `${bron}:${nummer}`;
+	}
+	function huidigAntwoord(bron: ParseBron, nummer: number) {
+		return bron === 'bron1' ? bron1Antw[nummer] : bron2Antw[nummer];
+	}
+	function vraagVan(bron: ParseBron, nummer: number) {
+		return (bron === 'bron1' ? B1 : B2).get(nummer);
+	}
+
+	function openUpload() {
+		uploadOpen = true;
+	}
+	function sluitUpload() {
+		uploadOpen = false;
+		voorstel = null;
+		parseFout = null;
+		docTekst = '';
+		bestandNaam = '';
+	}
+
+	async function kiesBestand(e: Event & { currentTarget: HTMLInputElement }) {
+		const file = e.currentTarget.files?.[0];
+		if (!file) return;
+		try {
+			const tekst = await file.text();
+			docTekst = docTekst.trim() ? docTekst + '\n\n' + tekst : tekst;
+			bestandNaam = file.name;
+		} catch {
+			parseFout = 'Kon dit bestand niet lezen. Plak de tekst desnoods handmatig.';
+		}
+		e.currentTarget.value = '';
+	}
+
+	async function analyseer() {
+		parseFout = null;
+		const t = docTekst.trim();
+		if (t.length < 20) {
+			parseFout = 'Plak eerst de tekst van het document (of upload een tekstbestand).';
+			return;
+		}
+		parsing = true;
+		try {
+			const res = await fetch('/api/intake', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ type: 'parse', clientId, tekst: t })
+			});
+			if (!res.ok) throw new Error((await res.text().catch(() => '')) || 'Analyse mislukt');
+			const data = (await res.json()) as { bron1: GeparseerdAntwoord[]; bron2: GeparseerdAntwoord[] };
+			voorstel = { bron1: data.bron1 ?? [], bron2: data.bron2 ?? [] };
+			// Standaard: nieuwe (lege) velden aangevinkt, overschrijvingen uitgevinkt.
+			const sel = new Set<string>();
+			for (const a of voorstel.bron1)
+				if (!heeftInhoud(huidigAntwoord('bron1', a.vraag_nummer))) sel.add(sleutel('bron1', a.vraag_nummer));
+			for (const a of voorstel.bron2)
+				if (!heeftInhoud(huidigAntwoord('bron2', a.vraag_nummer))) sel.add(sleutel('bron2', a.vraag_nummer));
+			gekozen = sel;
+		} catch (e) {
+			parseFout = e instanceof Error ? e.message : 'Analyse mislukt';
+		} finally {
+			parsing = false;
+		}
+	}
+
+	function toggleKeuze(s: string) {
+		const next = new Set(gekozen);
+		if (next.has(s)) next.delete(s);
+		else next.add(s);
+		gekozen = next;
+	}
+
+	async function pasToe() {
+		if (!voorstel) return;
+		const b1 = voorstel.bron1.filter((a) => gekozen.has(sleutel('bron1', a.vraag_nummer)));
+		const b2 = voorstel.bron2.filter((a) => gekozen.has(sleutel('bron2', a.vraag_nummer)));
+		if (b1.length === 0 && b2.length === 0) {
+			sluitUpload();
+			return;
+		}
+		toepassen = true;
+		parseFout = null;
+		try {
+			if (b1.length) {
+				for (const a of b1) bron1Antw[a.vraag_nummer] = a.antwoord;
+				await postIntake({ type: 'bulk', clientId, bron: 'bron1', antwoorden: b1 });
+			}
+			if (b2.length) {
+				for (const a of b2) bron2Antw[a.vraag_nummer] = a.antwoord;
+				await postIntake({ type: 'bulk', clientId, bron: 'bron2', antwoorden: b2 });
+			}
+			reseed++;
+			actief = b1.length ? 'bron1' : 'bron2';
+			sluitUpload();
+		} catch (e) {
+			parseFout = e instanceof Error ? e.message : 'Opslaan mislukt';
+		} finally {
+			toepassen = false;
+		}
+	}
 </script>
 
 <!-- Auto-save statusbalk -->
-<div class="mb-4 flex items-center justify-between">
+<div class="mb-4 flex items-center justify-between gap-4">
 	<p class="text-sm text-muted-foreground">
 		Alles wordt automatisch opgeslagen. Niet elke bron hoeft ingevuld te zijn.
 	</p>
-	<div class="flex items-center gap-1.5 text-xs">
-		{#if saver.fout}
-			<TriangleAlert class="size-3.5 text-destructive" />
-			<span class="text-destructive">Opslaan mislukt</span>
-		{:else if saver.actief > 0}
-			<LoaderCircle class="size-3.5 animate-spin text-muted-foreground" />
-			<span class="text-muted-foreground">Opslaan…</span>
-		{:else if saver.laatstOpgeslagen}
-			<Check class="size-3.5 text-brand-green" />
-			<span class="text-muted-foreground">Alle wijzigingen opgeslagen</span>
-		{/if}
+	<div class="flex items-center gap-3">
+		<div class="flex items-center gap-1.5 text-xs">
+			{#if saver.fout}
+				<TriangleAlert class="size-3.5 text-destructive" />
+				<span class="text-destructive">Opslaan mislukt</span>
+			{:else if saver.actief > 0}
+				<LoaderCircle class="size-3.5 animate-spin text-muted-foreground" />
+				<span class="text-muted-foreground">Opslaan…</span>
+			{:else if saver.laatstOpgeslagen}
+				<Check class="size-3.5 text-brand-green" />
+				<span class="text-muted-foreground">Alle wijzigingen opgeslagen</span>
+			{/if}
+		</div>
+		<Button variant="outline" size="sm" onclick={openUpload}>
+			<Upload class="size-4" />
+			Document uploaden
+		</Button>
 	</div>
 </div>
 
@@ -194,22 +325,24 @@
 	<!-- ============ BRON 1 ============ -->
 	{#if actief === 'bron1'}
 		<div class="space-y-6">
-			{#each BRON1_VRAGEN as v, i (v.nummer)}
-				{#if i === 0 || BRON1_VRAGEN[i - 1].blok !== v.blok}
-					<h3 class="border-b pb-1 text-sm font-semibold uppercase tracking-wide text-brand-green">
-						Blok {v.blok}
-					</h3>
-				{/if}
-				<div class="space-y-2">
-					<Label for={`b1-${v.nummer}`}>{v.nummer}. {v.tekst}</Label>
-					<AutoSaveField
-						id={`b1-${v.nummer}`}
-						value={bron1Antw[v.nummer] ?? ''}
-						onsave={(w) => bewaarBron1(v.nummer, w)}
-						placeholder="Antwoord…"
-					/>
-				</div>
-			{/each}
+			{#key reseed}
+				{#each BRON1_VRAGEN as v, i (v.nummer)}
+					{#if i === 0 || BRON1_VRAGEN[i - 1].categorie !== v.categorie}
+						<h3 class="border-b pb-1 text-sm font-semibold uppercase tracking-wide text-brand-green">
+							{v.categorie}
+						</h3>
+					{/if}
+					<div class="space-y-2">
+						<Label for={`b1-${v.nummer}`}>{v.tekst}</Label>
+						<AutoSaveField
+							id={`b1-${v.nummer}`}
+							value={bron1Antw[v.nummer] ?? ''}
+							onsave={(w) => bewaarBron1(v.nummer, w)}
+							placeholder="Antwoord…"
+						/>
+					</div>
+				{/each}
+			{/key}
 		</div>
 	{/if}
 
@@ -233,17 +366,24 @@
 					Deze bron is gemarkeerd als niet beschikbaar en telt als afgehandeld.
 				</p>
 			{:else}
-				{#each BRON2_VRAGEN as v (v.nummer)}
-					<div class="space-y-2">
-						<Label for={`b2-${v.nummer}`}>{v.nummer}. {v.tekst}</Label>
-						<AutoSaveField
-							id={`b2-${v.nummer}`}
-							value={bron2Antw[v.nummer] ?? ''}
-							onsave={(w) => bewaarBron2(v.nummer, w)}
-							placeholder="Antwoord…"
-						/>
-					</div>
-				{/each}
+				{#key reseed}
+					{#each BRON2_VRAGEN as v, i (v.nummer)}
+						{#if i === 0 || BRON2_VRAGEN[i - 1].categorie !== v.categorie}
+							<h3 class="border-b pb-1 text-sm font-semibold uppercase tracking-wide text-brand-green">
+								{v.categorie}
+							</h3>
+						{/if}
+						<div class="space-y-2">
+							<Label for={`b2-${v.nummer}`}>{v.tekst}</Label>
+							<AutoSaveField
+								id={`b2-${v.nummer}`}
+								value={bron2Antw[v.nummer] ?? ''}
+								onsave={(w) => bewaarBron2(v.nummer, w)}
+								placeholder="Antwoord…"
+							/>
+						</div>
+					{/each}
+				{/key}
 			{/if}
 		</div>
 	{/if}
@@ -309,7 +449,9 @@
 	{#if actief === 'bron4'}
 		<div class="space-y-4">
 			<p class="text-sm text-muted-foreground">
-				Plak ruwe reviews en comments per bron. Claude verwerkt dit later bij de trigger map.
+				Plak per bron een <strong>samenvatting</strong> van wat er uit de reviews komt (van jezelf én
+				concurrenten): de terugkerende positieve punten, negatieve punten en de gaps/kansen die je
+				daaruit kunt benutten. Nog geen samenvatting? Plak dan de ruwe reviews/comments.
 			</p>
 
 			{#each bron4 as r, i (r.id)}
@@ -345,12 +487,12 @@
 						</div>
 					</div>
 					<div class="mt-3 space-y-1.5">
-						<Label>Ruwe tekst</Label>
+						<Label>Samenvatting (positief · negatief · gaps)</Label>
 						<AutoSaveField
 							rows={5}
 							value={r.ruwe_tekst ?? ''}
 							onsave={(w) => bewaarBron4(r, 'ruwe_tekst', w)}
-							placeholder="Plak hier reviews, comments of quotes…"
+							placeholder={'Positief: terugkerende complimenten…\nNegatief: klachten/frustraties…\nGaps/kansen: wat concurrenten laten liggen…'}
 						/>
 					</div>
 				</div>
@@ -381,3 +523,185 @@
 		</div>
 	{/if}
 </div>
+
+<!-- ============ Document uploaden-modal ============ -->
+{#snippet regel(bron: ParseBron, a: GeparseerdAntwoord)}
+	{@const v = vraagVan(bron, a.vraag_nummer)}
+	{@const huidig = huidigAntwoord(bron, a.vraag_nummer)}
+	{@const overschrijft = heeftInhoud(huidig)}
+	{@const s = sleutel(bron, a.vraag_nummer)}
+	<label
+		class={cn(
+			'flex cursor-pointer gap-3 rounded-lg border p-3 text-sm transition-colors',
+			gekozen.has(s) ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+		)}
+	>
+		<input
+			type="checkbox"
+			checked={gekozen.has(s)}
+			onchange={() => toggleKeuze(s)}
+			class="mt-0.5 size-4 shrink-0 accent-[var(--brand-green)]"
+		/>
+		<div class="min-w-0 space-y-1">
+			<div class="flex flex-wrap items-center gap-1.5">
+				{#if v?.categorie}
+					<span class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{v.categorie}</span>
+				{/if}
+				{#if overschrijft}
+					<span class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
+						overschrijft huidig antwoord
+					</span>
+				{/if}
+			</div>
+			<p class="font-medium text-foreground">{v?.tekst ?? `Vraag ${a.vraag_nummer}`}</p>
+			<p class="whitespace-pre-wrap text-foreground">{a.antwoord}</p>
+			{#if overschrijft}
+				<p class="whitespace-pre-wrap text-xs text-muted-foreground">Huidig: {huidig}</p>
+			{/if}
+		</div>
+	</label>
+{/snippet}
+
+{#if uploadOpen}
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+		role="button"
+		tabindex="-1"
+		onclick={(e) => {
+			if (e.target === e.currentTarget && !parsing && !toepassen) sluitUpload();
+		}}
+		onkeydown={(e) => {
+			if (e.key === 'Escape' && !parsing && !toepassen) sluitUpload();
+		}}
+	>
+		<div class="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border bg-background shadow-xl">
+			<!-- Header -->
+			<div class="flex items-center justify-between border-b px-5 py-3.5">
+				<h2 class="flex items-center gap-2 text-base font-semibold">
+					<Upload class="size-4 text-brand-green" />
+					Document uploaden
+				</h2>
+				<button
+					type="button"
+					onclick={sluitUpload}
+					disabled={parsing || toepassen}
+					class="rounded-md p-1 text-muted-foreground hover:bg-muted disabled:opacity-50"
+					aria-label="Sluiten"
+				>
+					<X class="size-4" />
+				</button>
+			</div>
+
+			<!-- Body -->
+			<div class="flex-1 overflow-y-auto px-5 py-4">
+				{#if !voorstel}
+					<p class="mb-3 text-sm text-muted-foreground">
+						Plak hieronder de tekst van een klantgesprek of ingevuld intake-document (bijv. uit een
+						Google Doc: alles selecteren → kopiëren → plakken), of upload een <code>.txt</code>/<code>.md</code>-bestand.
+						Claude leest het en stelt voor welke intake-vragen ermee ingevuld kunnen worden — jij bepaalt
+						daarna wat je overneemt.
+					</p>
+
+					<Textarea
+						rows={10}
+						bind:value={docTekst}
+						placeholder="Plak hier de inhoud van het document…"
+					/>
+
+					<div class="mt-3 flex items-center gap-3">
+						<label
+							class="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+						>
+							<Upload class="size-4" />
+							Tekstbestand kiezen
+							<input
+								type="file"
+								accept=".txt,.md,.markdown,.csv,text/plain"
+								onchange={kiesBestand}
+								class="hidden"
+							/>
+						</label>
+						{#if bestandNaam}
+							<span class="truncate text-xs text-muted-foreground">Geladen: {bestandNaam}</span>
+						{/if}
+						<span class="ml-auto text-xs text-muted-foreground">
+							{docTekst.trim().length.toLocaleString('nl-NL')} tekens
+						</span>
+					</div>
+
+					{#if parseFout}
+						<p class="mt-3 flex items-center gap-1.5 text-sm text-destructive">
+							<TriangleAlert class="size-4" />
+							{parseFout}
+						</p>
+					{/if}
+				{:else if voorstel.bron1.length === 0 && voorstel.bron2.length === 0}
+					<p class="rounded-lg border border-dashed bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+						Geen bruikbare antwoorden gevonden in dit document. Probeer meer of andere tekst.
+					</p>
+				{:else}
+					<p class="mb-3 text-sm text-muted-foreground">
+						Claude vond {voorstel.bron1.length + voorstel.bron2.length} mogelijke antwoorden. Vink aan wat je
+						wilt overnemen. Velden die al ingevuld zijn staan standaard uit.
+					</p>
+					{#if voorstel.bron1.length}
+						<h3 class="mb-2 text-sm font-semibold text-brand-green">Klantgesprek (Bron 1)</h3>
+						<div class="mb-4 space-y-2">
+							{#each voorstel.bron1 as a (a.vraag_nummer)}
+								{@render regel('bron1', a)}
+							{/each}
+						</div>
+					{/if}
+					{#if voorstel.bron2.length}
+						<h3 class="mb-2 text-sm font-semibold text-brand-green">Interne interviews (Bron 2)</h3>
+						<div class="space-y-2">
+							{#each voorstel.bron2 as a (a.vraag_nummer)}
+								{@render regel('bron2', a)}
+							{/each}
+						</div>
+					{/if}
+					{#if parseFout}
+						<p class="mt-3 flex items-center gap-1.5 text-sm text-destructive">
+							<TriangleAlert class="size-4" />
+							{parseFout}
+						</p>
+					{/if}
+				{/if}
+			</div>
+
+			<!-- Footer -->
+			<div class="flex items-center justify-between gap-3 border-t px-5 py-3.5">
+				{#if voorstel && !(voorstel.bron1.length === 0 && voorstel.bron2.length === 0)}
+					<span class="text-xs text-muted-foreground">{gekozen.size} geselecteerd</span>
+					<div class="flex gap-2">
+						<Button variant="ghost" onclick={() => (voorstel = null)} disabled={toepassen}>
+							Terug
+						</Button>
+						<Button onclick={pasToe} disabled={toepassen || gekozen.size === 0}>
+							{#if toepassen}
+								<LoaderCircle class="size-4 animate-spin" />
+								Toepassen…
+							{:else}
+								Overnemen ({gekozen.size})
+							{/if}
+						</Button>
+					</div>
+				{:else}
+					<span></span>
+					<div class="flex gap-2">
+						<Button variant="ghost" onclick={sluitUpload} disabled={parsing}>Annuleren</Button>
+						<Button onclick={analyseer} disabled={parsing || docTekst.trim().length < 20}>
+							{#if parsing}
+								<LoaderCircle class="size-4 animate-spin" />
+								Analyseren…
+							{:else}
+								<Sparkles class="size-4" />
+								Analyseren
+							{/if}
+						</Button>
+					</div>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}

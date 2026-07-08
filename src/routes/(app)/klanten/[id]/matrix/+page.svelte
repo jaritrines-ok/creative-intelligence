@@ -31,6 +31,8 @@
 		concepten = data.concepten.map((c) => ({ ...c }));
 	});
 	let toonArchief = $state(false);
+	let bezigGenereren = $state(false);
+	let genereerFout = $state<string | null>(null);
 
 	let actief = $derived(sorteerConcepten(concepten.filter((c) => !c.gearchiveerd)));
 	let archief = $derived(concepten.filter((c) => c.gearchiveerd));
@@ -80,6 +82,24 @@
 			concepten.push(concept);
 		}
 	}
+	async function genereerMatrix() {
+		if (concepten.length && !confirm('Een matrix-opzet genereren? De voorgestelde concepten worden toegevoegd aan de bestaande.')) {
+			return;
+		}
+		bezigGenereren = true;
+		genereerFout = null;
+		try {
+			const { concepten: nieuw } = await postJSON<{ concepten: Concept[] }>('/api/concepts', {
+				type: 'genereer',
+				clientId: data.client.id
+			});
+			concepten.push(...nieuw);
+		} catch (e) {
+			genereerFout = e instanceof Error ? e.message : 'Genereren mislukt';
+		} finally {
+			bezigGenereren = false;
+		}
+	}
 
 	const statusKleur: Record<string, string> = {
 		Idee: 'border-border bg-muted text-muted-foreground',
@@ -105,6 +125,27 @@
 	/>
 {/snippet}
 
+<!-- Combobox: kies een suggestie of typ een eigen waarde -->
+{#snippet comboCel(c: Concept, veld: keyof Concept, listId: string)}
+	<input
+		list={listId}
+		bind:value={c[veld]}
+		onblur={() => saveVeld(c, veld)}
+		placeholder="—"
+		class={veldClass}
+	/>
+{/snippet}
+
+<datalist id="dl-format">
+	{#each FORMATS as o (o)}<option value={o}></option>{/each}
+</datalist>
+<datalist id="dl-structuur">
+	{#each STRUCTUREN as o (o)}<option value={o}></option>{/each}
+</datalist>
+<datalist id="dl-variabele">
+	{#each TEST_VARIABELEN as o (o)}<option value={o}></option>{/each}
+</datalist>
+
 <div class="space-y-5">
 	<!-- Kop -->
 	<div class="flex flex-wrap items-start justify-between gap-3">
@@ -127,12 +168,30 @@
 					<span class="text-muted-foreground">Opgeslagen</span>
 				{/if}
 			</div>
+			{#if data.heeftTriggerMap && actief.length > 0}
+				<Button variant="outline" onclick={genereerMatrix} disabled={bezigGenereren}>
+					{#if bezigGenereren}
+						<LoaderCircle class="size-4 animate-spin" />
+						Genereren…
+					{:else}
+						<Sparkles class="size-4" />
+						Opzet genereren
+					{/if}
+				</Button>
+			{/if}
 			<Button onclick={rijToevoegen}>
 				<Plus class="size-4" />
 				Concept toevoegen
 			</Button>
 		</div>
 	</div>
+
+	{#if genereerFout}
+		<div class="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+			<TriangleAlert class="size-4 shrink-0" />
+			{genereerFout}
+		</div>
+	{/if}
 
 	<!-- Testvolgorde-indicator -->
 	<div
@@ -146,17 +205,39 @@
 	</div>
 
 	<!-- Voorstel uit trigger map -->
-	{#if actief.length === 0 && data.invalshoeken.length > 0}
+	{#if bezigGenereren && actief.length === 0}
+		<div class="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-muted/30 py-16 text-center">
+			<LoaderCircle class="size-6 animate-spin text-primary" />
+			<p class="text-sm font-medium">Claude stelt een matrix-opzet voor…</p>
+			<p class="text-xs text-muted-foreground">Dit kan een halve minuut duren.</p>
+		</div>
+	{:else if actief.length === 0 && data.heeftTriggerMap}
 		<div class="rounded-lg border border-dashed bg-muted/30 p-6 text-center">
 			<Sparkles class="mx-auto size-6 text-accent" />
-			<p class="mt-2 text-sm font-medium">Start met de 3 invalshoeken uit je trigger map</p>
+			<p class="mt-2 text-sm font-medium">Genereer een matrix-opzet uit je trigger map</p>
 			<p class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-				De invalshoeken worden als eerste concepten voorgesteld. Je kunt ze daarna aanpassen.
+				Claude stelt een set concepten voor (funnelfase, invalshoek, format, structuur, hypothese) op
+				basis van je trigger map. Je kunt alles daarna vrij aanpassen.
 			</p>
-			<Button class="mt-4" onclick={neemInvalshoekenOver}>
-				<Sparkles class="size-4" />
-				Neem de invalshoeken over
-			</Button>
+			<div class="mt-4 flex flex-wrap justify-center gap-2">
+				<Button onclick={genereerMatrix} disabled={bezigGenereren}>
+					<Sparkles class="size-4" />
+					Matrix-opzet genereren
+				</Button>
+				{#if data.invalshoeken.length > 0}
+					<Button variant="outline" onclick={neemInvalshoekenOver}>
+						Alleen de 3 invalshoeken overnemen
+					</Button>
+				{/if}
+			</div>
+		</div>
+	{:else if actief.length === 0}
+		<div class="rounded-lg border border-dashed bg-muted/30 p-10 text-center">
+			<p class="text-sm font-medium text-foreground">Nog geen concepten</p>
+			<p class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+				Genereer eerst een <strong>trigger map</strong> — daaruit stelt Claude automatisch een
+				matrix-opzet voor. Of voeg handmatig een concept toe.
+			</p>
 		</div>
 	{/if}
 
@@ -183,11 +264,11 @@
 						<tr class={cn('border-b align-top', c.status === 'Live' && 'bg-brand-lime/5')}>
 							<td class="p-2">{@render selectCel(c, 'funnelfase', FUNNELFASES, true)}</td>
 							<td class="p-2">{@render inputCel(c, 'invalshoek', 'Invalshoek')}</td>
-							<td class="p-2">{@render selectCel(c, 'format', FORMATS, true)}</td>
-							<td class="p-2">{@render selectCel(c, 'structuur', STRUCTUREN, true)}</td>
+							<td class="p-2">{@render comboCel(c, 'format', 'dl-format')}</td>
+							<td class="p-2">{@render comboCel(c, 'structuur', 'dl-structuur')}</td>
 							<td class="p-2">{@render inputCel(c, 'creator_type', 'Bijv. micro-influencer')}</td>
 							<td class="p-2">{@render inputCel(c, 'hypothese', 'Wat verwacht je?')}</td>
-							<td class="p-2">{@render selectCel(c, 'variabele', TEST_VARIABELEN, true)}</td>
+							<td class="p-2">{@render comboCel(c, 'variabele', 'dl-variabele')}</td>
 							<td class="p-2">{@render selectCel(c, 'prioriteit', PRIORITEITEN, true)}</td>
 							<td class="p-2">{@render selectCel(c, 'status', CONCEPT_STATUSSEN, false)}</td>
 							<td class="p-2">
@@ -216,13 +297,6 @@
 					{/each}
 				</tbody>
 			</table>
-		</div>
-	{:else if data.invalshoeken.length === 0}
-		<div class="rounded-lg border border-dashed bg-muted/30 p-10 text-center">
-			<p class="text-sm font-medium text-foreground">Nog geen concepten</p>
-			<p class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-				Voeg een concept toe, of genereer eerst een trigger map om de invalshoeken over te nemen.
-			</p>
 		</div>
 	{/if}
 
