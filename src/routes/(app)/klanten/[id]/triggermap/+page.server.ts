@@ -34,7 +34,7 @@ export const actions: Actions = {
 	genereren: async ({ params, locals: { supabase, user } }) => {
 		const id = params.id;
 
-		const [b1, b2, b3, b4, b5] = await Promise.all([
+		const [b1, b2, b3, b4, b5, b6] = await Promise.all([
 			supabase.from('intake_bron1').select('vraag_nummer, antwoord').eq('client_id', id),
 			supabase.from('intake_bron2').select('vraag_nummer, antwoord').eq('client_id', id),
 			supabase.from('intake_bron3_concurrenten').select('*').eq('client_id', id),
@@ -43,7 +43,8 @@ export const actions: Actions = {
 				.from('intake_bron5')
 				.select('beste_advertenties, best_verkopende_producten, search_console, organische_posts')
 				.eq('client_id', id)
-				.maybeSingle()
+				.maybeSingle(),
+			supabase.from('intake_bron6').select('titel, inhoud').eq('client_id', id)
 		]);
 
 		if (!bron1Volledig(b1.data ?? [])) {
@@ -57,7 +58,8 @@ export const actions: Actions = {
 			bron2: b2.data ?? [],
 			bron3: b3.data ?? [],
 			bron4: b4.data ?? [],
-			bron5: b5.data ?? null
+			bron5: b5.data ?? null,
+			bron6: b6.data ?? []
 		});
 
 		try {

@@ -98,6 +98,7 @@ export interface IntakeData {
 		search_console: string | null;
 		organische_posts: string | null;
 	} | null;
+	bron6: Array<{ titel: string | null; inhoud: string | null }>;
 }
 
 /** Bouwt een leesbaar Nederlands promptblok uit alle beschikbare intake-data. */
@@ -163,6 +164,12 @@ export function bouwIntakeTekst(data: IntakeData): string {
 		if (b5.length)
 			delen.push('## BRON 5 — Eigen data klant\n' + b5.map(([l, v]) => `- ${l}: ${v}`).join('\n'));
 	}
+
+	// Bron 6 — Overig
+	const b6regels = data.bron6
+		.filter((r) => heeftInhoud(r.inhoud))
+		.map((r) => `[${r.titel || 'Overig'}]\n${r.inhoud}`);
+	if (b6regels.length) delen.push('## BRON 6 — Overige data\n' + b6regels.join('\n\n'));
 
 	return delen.join('\n\n');
 }

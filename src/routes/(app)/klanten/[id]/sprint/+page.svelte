@@ -6,10 +6,9 @@
 	import { saver, postJSON } from '$lib/saver.svelte';
 	import { cn } from '$lib/utils';
 	import type { Concept } from '$lib/supabase/database.types';
-	import type { Brief, Analyse } from '$lib/sprint';
-	import { METRIC_VELDEN, BRIEF_SECTIES } from '$lib/sprint';
+	import type { Analyse } from '$lib/sprint';
+	import { METRIC_VELDEN } from '$lib/sprint';
 	import { TESTVOLGORDE } from '$lib/matrix';
-	import FileText from '@lucide/svelte/icons/file-text';
 	import Brain from '@lucide/svelte/icons/brain';
 	import Trophy from '@lucide/svelte/icons/trophy';
 	import GitBranch from '@lucide/svelte/icons/git-branch';
@@ -25,7 +24,6 @@
 		concepten = data.concepten.map((c) => ({ ...c }));
 	});
 
-	let bezigBrief = $state<Record<string, boolean>>({});
 	let bezigAnalyse = $state<Record<string, boolean>>({});
 	let fout = $state<string | null>(null);
 
@@ -53,18 +51,6 @@
 		c.is_winnaar = !c.is_winnaar;
 		await postJSON('/api/sprint', { type: 'winnaar', id: c.id, waarde: c.is_winnaar });
 	}
-	async function genBrief(c: Concept) {
-		bezigBrief[c.id] = true;
-		fout = null;
-		try {
-			const { brief } = await postJSON<{ brief: Brief }>('/api/sprint', { type: 'brief', id: c.id });
-			c.brief = brief as unknown as Concept['brief'];
-		} catch (e) {
-			fout = e instanceof Error ? e.message : 'Brief mislukt';
-		} finally {
-			bezigBrief[c.id] = false;
-		}
-	}
 	async function genAnalyse(c: Concept) {
 		bezigAnalyse[c.id] = true;
 		fout = null;
@@ -88,9 +74,6 @@
 		concepten.push(concept);
 	}
 
-	function brief(c: Concept): Brief | null {
-		return (c.brief as Brief | null) ?? null;
-	}
 	function analyse(c: Concept): Analyse | null {
 		return (c.ai_analyse as Analyse | null) ?? null;
 	}
@@ -212,15 +195,6 @@
 								Analyseer resultaten
 							{/if}
 						</Button>
-						<Button variant="outline" size="sm" onclick={() => genBrief(c)} disabled={bezigBrief[c.id]}>
-							{#if bezigBrief[c.id]}
-								<LoaderCircle class="size-4 animate-spin" />
-								Genereren…
-							{:else}
-								<FileText class="size-4" />
-								{brief(c) ? 'Brief opnieuw genereren' : 'Creative brief'}
-							{/if}
-						</Button>
 						{#if c.is_winnaar}
 							<Button variant="outline" size="sm" onclick={() => vervolg(c)}>
 								<GitBranch class="size-4" />
@@ -247,23 +221,6 @@
 						</div>
 					{/if}
 
-					<!-- Creative brief -->
-					{#if brief(c)}
-						{@const b = brief(c)!}
-						<div class="rounded-md border bg-muted/20 p-4">
-							<p class="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-								Creative brief
-							</p>
-							<div class="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
-								{#each BRIEF_SECTIES as sectie (sectie.key)}
-									<div>
-										<p class="text-xs font-semibold text-muted-foreground">{sectie.label}</p>
-										<p class="mt-0.5 text-sm">{b[sectie.key]}</p>
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/if}
 				</Card.Content>
 			</Card.Root>
 		{/each}

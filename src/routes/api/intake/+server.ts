@@ -23,6 +23,7 @@ const BRON3_VELDEN = [
 	'kansen'
 ];
 const BRON4_VELDEN = ['platform', 'bron_naam', 'ruwe_tekst'];
+const BRON6_VELDEN = ['titel', 'inhoud'];
 const BRON5_VELDEN = [
 	'beste_advertenties',
 	'best_verkopende_producten',
@@ -119,6 +120,36 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 			const id = String(body.id ?? '');
 			if (!id) error(400, 'Ontbrekend id');
 			const { error: dbFout } = await sb.from(tabel).delete().eq('id', id);
+			if (dbFout) error(500, dbFout.message);
+			return json({ ok: true });
+		}
+
+		case 'bron6.insert': {
+			const clientId = String(body.clientId ?? '');
+			if (!clientId) error(400, 'Ontbrekende klant');
+			const { data, error: dbFout } = await sb
+				.from('intake_bron6')
+				.insert({ client_id: clientId })
+				.select('id')
+				.single();
+			if (dbFout || !data) error(500, dbFout?.message ?? 'Aanmaken mislukt');
+			return json({ id: data.id });
+		}
+
+		case 'bron6.update': {
+			const id = String(body.id ?? '');
+			if (!id) error(400, 'Ontbrekend id');
+			const patch = schoonPatch(body.patch, BRON6_VELDEN);
+			if (Object.keys(patch).length === 0) return json({ ok: true });
+			const { error: dbFout } = await sb.from('intake_bron6').update(patch as never).eq('id', id);
+			if (dbFout) error(500, dbFout.message);
+			return json({ ok: true });
+		}
+
+		case 'bron6.delete': {
+			const id = String(body.id ?? '');
+			if (!id) error(400, 'Ontbrekend id');
+			const { error: dbFout } = await sb.from('intake_bron6').delete().eq('id', id);
 			if (dbFout) error(500, dbFout.message);
 			return json({ ok: true });
 		}

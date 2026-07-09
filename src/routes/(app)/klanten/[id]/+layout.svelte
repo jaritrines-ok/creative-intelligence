@@ -17,6 +17,7 @@
 		{ label: 'Intake', href: `${base}/intake` },
 		{ label: 'Trigger Map', href: `${base}/triggermap` },
 		{ label: 'Matrix', href: `${base}/matrix` },
+		{ label: 'Brief', href: `${base}/brief` },
 		{ label: 'Sprint', href: `${base}/sprint` }
 	]);
 

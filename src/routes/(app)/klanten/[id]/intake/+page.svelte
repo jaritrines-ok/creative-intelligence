@@ -50,7 +50,10 @@
 		organische_posts: data.bron5?.organische_posts ?? ''
 	});
 
-	let actief = $state<'bron1' | 'bron2' | 'bron3' | 'bron4' | 'bron5'>('bron1');
+	// svelte-ignore state_referenced_locally
+	let bron6 = $state(data.bron6.map((r) => ({ ...r })));
+
+	let actief = $state<'bron1' | 'bron2' | 'bron3' | 'bron4' | 'bron5' | 'bron6'>('bron1');
 
 	// ---- live voortgang ----
 	let progress = $derived(
@@ -68,7 +71,9 @@
 		{ key: 'bron2' as const, label: 'Interne interviews', pct: progress.bron2 },
 		{ key: 'bron3' as const, label: 'Concurrentie', pct: progress.bron3 },
 		{ key: 'bron4' as const, label: 'Reviews', pct: progress.bron4 },
-		{ key: 'bron5' as const, label: 'Eigen data', pct: progress.bron5 }
+		{ key: 'bron5' as const, label: 'Eigen data', pct: progress.bron5 },
+		// Bron 6 is optioneel en telt niet mee in de voortgang; toont een aantal i.p.v. %.
+		{ key: 'bron6' as const, label: 'Overig', count: bron6.length }
 	]);
 
 	// ---- opslag-acties ----
@@ -134,6 +139,26 @@
 	function bewaarBron4(rij: (typeof bron4)[number], veld: string, waarde: string) {
 		(rij as Record<string, unknown>)[veld] = waarde;
 		return postIntake({ type: 'bron4.update', id: rij.id, patch: { [veld]: waarde } });
+	}
+
+	async function voegBron6Toe() {
+		const { id } = await postIntake<{ id: string }>({ type: 'bron6.insert', clientId });
+		bron6.push({
+			id,
+			client_id: clientId,
+			titel: '',
+			inhoud: '',
+			created_at: new Date().toISOString()
+		});
+	}
+	async function verwijderBron6(id: string) {
+		if (!confirm('Dit blok verwijderen?')) return;
+		await postIntake({ type: 'bron6.delete', id });
+		bron6 = bron6.filter((r) => r.id !== id);
+	}
+	function bewaarBron6(rij: (typeof bron6)[number], veld: string, waarde: string) {
+		(rij as Record<string, unknown>)[veld] = waarde;
+		return postIntake({ type: 'bron6.update', id: rij.id, patch: { [veld]: waarde } });
 	}
 
 	const bron3Velden = [
@@ -305,18 +330,24 @@
 			)}
 		>
 			{t.label}
-			<span
-				class={cn(
-					'rounded-full px-1.5 py-0.5 text-xs font-semibold',
-					t.pct >= 100
-						? 'bg-brand-lime/25 text-brand-green'
-						: t.pct > 0
-							? 'bg-muted text-foreground'
-							: 'bg-muted text-muted-foreground'
-				)}
-			>
-				{t.pct}%
-			</span>
+			{#if 'count' in t}
+				<span class="rounded-full bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
+					{t.count}
+				</span>
+			{:else}
+				<span
+					class={cn(
+						'rounded-full px-1.5 py-0.5 text-xs font-semibold',
+						t.pct >= 100
+							? 'bg-brand-lime/25 text-brand-green'
+							: t.pct > 0
+								? 'bg-muted text-foreground'
+								: 'bg-muted text-muted-foreground'
+					)}
+				>
+					{t.pct}%
+				</span>
+			{/if}
 		</button>
 	{/each}
 </div>
@@ -520,6 +551,46 @@
 					/>
 				</div>
 			{/each}
+		</div>
+	{/if}
+
+	<!-- ============ BRON 6 — Overig ============ -->
+	{#if actief === 'bron6'}
+		<div class="space-y-4">
+			<p class="text-sm text-muted-foreground">
+				Optionele extra data die niet in de andere bronnen past — bijv. Pinterest-inzichten,
+				Reddit-discussies of analyses van eerdere campagnes. Voeg zoveel blokken toe als je wilt; geen
+				is ook prima. Deze data wordt meegenomen bij het genereren van de trigger map.
+			</p>
+
+			{#each bron6 as r (r.id)}
+				<div class="rounded-lg border p-4">
+					<div class="mb-3 flex items-start gap-2">
+						<div class="flex-1">
+							<AutoSaveField
+								multiline={false}
+								value={r.titel ?? ''}
+								onsave={(w) => bewaarBron6(r, 'titel', w)}
+								placeholder="Titel (bijv. 'Pinterest-analyse Q2' of 'Learnings campagne 2025')"
+							/>
+						</div>
+						<Button variant="ghost" size="sm" onclick={() => verwijderBron6(r.id)}>
+							<Trash2 class="size-4" />
+						</Button>
+					</div>
+					<AutoSaveField
+						rows={5}
+						value={r.inhoud ?? ''}
+						onsave={(w) => bewaarBron6(r, 'inhoud', w)}
+						placeholder="Plak of typ hier de data, inzichten of bevindingen…"
+					/>
+				</div>
+			{/each}
+
+			<Button variant="outline" onclick={voegBron6Toe}>
+				<Plus class="size-4" />
+				Blok toevoegen
+			</Button>
 		</div>
 	{/if}
 </div>

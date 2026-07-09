@@ -201,6 +201,30 @@ export interface Database {
 				};
 				Relationships: [];
 			};
+			intake_bron6: {
+				Row: {
+					id: string;
+					client_id: string;
+					titel: string | null;
+					inhoud: string | null;
+					created_at: string;
+				};
+				Insert: {
+					id?: string;
+					client_id: string;
+					titel?: string | null;
+					inhoud?: string | null;
+					created_at?: string;
+				};
+				Update: {
+					id?: string;
+					client_id?: string;
+					titel?: string | null;
+					inhoud?: string | null;
+					created_at?: string;
+				};
+				Relationships: [];
+			};
 			trigger_map_versions: {
 				Row: {
 					id: string;
