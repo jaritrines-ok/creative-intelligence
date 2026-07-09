@@ -77,5 +77,7 @@ Strikte regels:
 export async function parseIntakeDocument(documentTekst: string) {
 	const prompt = `## Vragenlijst Bron 1 (klantgesprek)\n${vragenlijst(BRON1_VRAGEN)}\n\n## Vragenlijst Bron 2 (interne interviews)\n${vragenlijst(BRON2_VRAGEN)}\n\n## Document\n${documentTekst}`;
 
-	return claudeJSON<IntakeParseResultaat>(SYSTEM, prompt, SCHEMA, 8000);
+	// Extractie (geen strategie): effort 'low' = sneller + minder denk-tokens.
+	// Ruime max_tokens zodat de (soms lange) JSON niet afknapt door de denk-tokens.
+	return claudeJSON<IntakeParseResultaat>(SYSTEM, prompt, SCHEMA, 16000, 'low');
 }
