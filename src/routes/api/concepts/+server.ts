@@ -135,8 +135,13 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 					taal_doelgroep: (tm.taal_doelgroep as string[]) ?? [],
 					kansen_vs_concurrenten: (tm.kansen_vs_concurrenten as string[]) ?? [],
 					invalshoeken:
-						(tm.invalshoeken as Array<{ naam?: string; omschrijving?: string; funnelfase?: string }>) ??
-						[]
+						(tm.invalshoeken as Array<{
+							naam?: string;
+							omschrijving?: string;
+							funnelfase?: string;
+							status?: string;
+							gearchiveerd?: boolean;
+						}>) ?? []
 				});
 
 				await supabase.from('ai_logs').insert({

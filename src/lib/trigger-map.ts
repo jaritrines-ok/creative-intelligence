@@ -1,10 +1,33 @@
 /** Gedeelde types voor de trigger map (client + server). */
 
+export type Funnelfase = 'TOFU' | 'MOFU' | 'BOFU';
+
+/** Levenscyclus van een invalshoek — houdt de trigger map "levend". */
+export type InvalshoekStatus = 'Nieuw' | 'In test' | 'Getest — werkt' | 'Getest — werkt niet';
+
+export const INVALSHOEK_STATUSSEN: InvalshoekStatus[] = [
+	'Nieuw',
+	'In test',
+	'Getest — werkt',
+	'Getest — werkt niet'
+];
+
+export const FUNNELFASES: Funnelfase[] = ['TOFU', 'MOFU', 'BOFU'];
+
 export interface Invalshoek {
 	naam: string;
 	omschrijving: string;
-	funnelfase: 'TOFU' | 'MOFU' | 'BOFU';
+	funnelfase: Funnelfase;
 	onderbouwing: string;
+	/** Levenscyclus-status; ontbreekt op oudere data → behandeld als 'Nieuw'. */
+	status?: InvalshoekStatus;
+	/** Gearchiveerde invalshoeken tellen niet meer mee en verschijnen niet in de matrix. */
+	gearchiveerd?: boolean;
+}
+
+/** Status van een invalshoek, met terugval op 'Nieuw' voor oudere data. */
+export function invalshoekStatus(inv: Invalshoek): InvalshoekStatus {
+	return inv.status ?? 'Nieuw';
 }
 
 export interface TriggerMapData {

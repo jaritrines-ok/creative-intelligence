@@ -65,8 +65,10 @@
 		await postJSON('/api/concepts', { type: 'herstel', id: c.id });
 		c.gearchiveerd = false;
 	}
+	let overneembareInvalshoeken = $derived(data.invalshoeken.filter((inv) => !inv.gearchiveerd));
+
 	async function neemInvalshoekenOver() {
-		for (const inv of data.invalshoeken) {
+		for (const inv of overneembareInvalshoeken) {
 			const { concept } = await postJSON<{ concept: Concept }>('/api/concepts', {
 				type: 'insert',
 				clientId: data.client.id,
@@ -224,9 +226,9 @@
 					<Sparkles class="size-4" />
 					Matrix-opzet genereren
 				</Button>
-				{#if data.invalshoeken.length > 0}
+				{#if overneembareInvalshoeken.length > 0}
 					<Button variant="outline" onclick={neemInvalshoekenOver}>
-						Alleen de 3 invalshoeken overnemen
+						Alleen de invalshoeken overnemen ({overneembareInvalshoeken.length})
 					</Button>
 				{/if}
 			</div>

@@ -18,7 +18,13 @@ interface TriggerMapContext {
 	bezwaren?: string[];
 	taal_doelgroep?: string[];
 	kansen_vs_concurrenten?: string[];
-	invalshoeken?: Array<{ naam?: string; omschrijving?: string; funnelfase?: string }>;
+	invalshoeken?: Array<{
+		naam?: string;
+		omschrijving?: string;
+		funnelfase?: string;
+		status?: string;
+		gearchiveerd?: boolean;
+	}>;
 }
 
 const SCHEMA = {
@@ -66,9 +72,9 @@ Geef output ALLEEN als valide JSON in dit formaat:
 }
 
 Richtlijnen:
-- Stel 6 tot 9 concepten voor.
-- Bouw voort op de 3 invalshoeken uit de trigger map en dek TOFU, MOFU én BOFU af.
-- Testvolgorde is Invalshoek → Format → Structuur → Creator. In deze eerste opzet test je de INVALSHOEK, dus zet "variabele" op "Invalshoek".
+- Maak één concept per invalshoek uit de trigger map (dek TOFU, MOFU én BOFU af); 6 tot 9 concepten.
+- Testvolgorde is Invalshoek → Format → Structuur → Creator. In deze eerste opzet test je de INVALSHOEK, dus zet "variabele" bij ELK concept op "Invalshoek".
+- CRUCIAAL — schoon testen: omdat je nu de invalshoek test, moeten de andere variabelen GELIJK blijven zodat het verschil alleen door de invalshoek komt. Kies daarom PER FUNNELFASE één vast "format", één vaste "structuur" en één vast "creator_type", en gebruik die identiek voor alle concepten binnen die fase. Alleen "invalshoek" (en de bijbehorende "hypothese") verschilt binnen een fase. Verschillende fases mogen wél een ander format/structuur/creator hebben.
 - Kies "format" bij voorkeur uit: Video UGC, Static, Motion graphic, Carousel.
 - Kies "structuur" bij voorkeur uit: GRWM, Probleem-oplossing, POV, Testimonial, Dag-in-het-leven, Benefit bullets.
 - "creator_type": kort (bijv. "Micro-influencer", "Klant/UGC", "Merk zelf").
@@ -77,16 +83,19 @@ Richtlijnen:
 - Taal: Nederlands. Gebruik de taal van de doelgroep waar passend. Baseer je op de trigger map — geen aannames.`;
 
 export async function genereerMatrix(tm: TriggerMapContext) {
+	// Gearchiveerde invalshoeken tellen niet meer mee.
+	const actieveInvalshoeken = (tm.invalshoeken ?? []).filter((i) => !i.gearchiveerd);
 	const context = [
 		'## Trigger map',
-		tm.invalshoeken?.length
-			? 'Invalshoeken:\n' +
-				tm.invalshoeken
+		actieveInvalshoeken.length
+			? 'Invalshoeken (per funnelfase; status tussen haakjes):\n' +
+				actieveInvalshoeken
 					.map(
 						(i) =>
-							`- ${i.naam ?? ''} (${i.funnelfase ?? '?'}): ${i.omschrijving ?? ''}`
+							`- [${i.funnelfase ?? '?'}] ${i.naam ?? ''} (${i.status ?? 'Nieuw'}): ${i.omschrijving ?? ''}`
 					)
-					.join('\n')
+					.join('\n') +
+				'\n\nMaak concepten voor invalshoeken die nog NIET succesvol getest zijn (sla "Getest — werkt" over tenzij er te weinig overblijven).'
 			: '',
 		tm.pijnpunten?.length ? `Pijnpunten: ${tm.pijnpunten.join('; ')}` : '',
 		tm.wensen?.length ? `Wensen: ${tm.wensen.join('; ')}` : '',

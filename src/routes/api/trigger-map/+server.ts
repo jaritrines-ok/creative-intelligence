@@ -1,9 +1,10 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { TRIGGER_MAP_SECTIES } from '$lib/trigger-map';
+import { TRIGGER_MAP_SECTIES, INVALSHOEK_STATUSSEN } from '$lib/trigger-map';
 
 const SECTIE_KEYS = TRIGGER_MAP_SECTIES.map((s) => s.key) as string[];
 const FUNNELFASES = ['TOFU', 'MOFU', 'BOFU'];
+const STATUSSEN = INVALSHOEK_STATUSSEN as string[];
 
 export const POST: RequestHandler = async ({ request, locals: { supabase, user } }) => {
 	if (!user) error(401, 'Niet ingelogd');
@@ -35,7 +36,9 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 				naam: String(x?.naam ?? ''),
 				omschrijving: String(x?.omschrijving ?? ''),
 				funnelfase: FUNNELFASES.includes(x?.funnelfase as string) ? x.funnelfase : 'TOFU',
-				onderbouwing: String(x?.onderbouwing ?? '')
+				onderbouwing: String(x?.onderbouwing ?? ''),
+				status: STATUSSEN.includes(x?.status as string) ? x.status : 'Nieuw',
+				gearchiveerd: !!x?.gearchiveerd
 			}));
 			const { error: dbFout } = await supabase
 				.from('trigger_map_versions')
