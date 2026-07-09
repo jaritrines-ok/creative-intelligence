@@ -7,6 +7,9 @@ import { CLAUDE_MODEL } from '$lib/server/claude';
 
 type ConceptInsert = Database['public']['Tables']['concepts']['Insert'];
 
+// AI-generatie met adaptive thinking duurt langer; ruimere Vercel-functietimeout.
+export const config = { maxDuration: 60 };
+
 const TEKST_VELDEN = ['invalshoek', 'format', 'structuur', 'creator_type', 'hypothese', 'variabele'];
 const FUNNEL = FUNNELFASES as string[];
 const PRIO = PRIORITEITEN as string[];

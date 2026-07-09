@@ -6,6 +6,9 @@ import { BRON1_DREMPEL } from '$lib/intake-vragen';
 import { heeftInhoud } from '$lib/progress';
 import type { Json } from '$lib/supabase/database.types';
 
+// AI-generatie met adaptive thinking duurt langer; ruimere Vercel-functietimeout.
+export const config = { maxDuration: 60 };
+
 /** Voldoende Bron 1-input om een zinnige trigger map te genereren (drempel, niet alles). */
 function bron1Volledig(rows: Array<{ vraag_nummer: number; antwoord: string | null }>): boolean {
 	const aantal = rows.filter((r) => r.vraag_nummer > 0 && heeftInhoud(r.antwoord)).length;

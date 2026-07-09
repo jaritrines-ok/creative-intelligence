@@ -18,24 +18,31 @@ export interface ClaudeJSONResultaat<T> {
 	duurMs: number;
 }
 
+/** Denk-effort voor de generaties; hoger = grondiger maar langzamer. */
+export type ClaudeEffort = 'low' | 'medium' | 'high' | 'max';
+
 /**
  * Roept Claude aan met structured outputs (gegarandeerd valide JSON volgens schema)
  * en geeft het resultaat + metadata terug voor ai_logs.
+ *
+ * Adaptive thinking staat aan: het model bepaalt zelf hoeveel het nadenkt (gestuurd
+ * door `effort`). De denk-tokens tellen mee in max_tokens, vandaar de ruime default.
  */
 export async function claudeJSON<T>(
 	system: string,
 	prompt: string,
 	schema: object,
-	maxTokens = 4000
+	maxTokens = 16000,
+	effort: ClaudeEffort = 'high'
 ): Promise<ClaudeJSONResultaat<T>> {
 	const start = Date.now();
 	const response = await anthropic.messages.create({
 		model: CLAUDE_MODEL,
 		max_tokens: maxTokens,
-		thinking: { type: 'disabled' },
+		thinking: { type: 'adaptive' },
 		system,
 		messages: [{ role: 'user', content: prompt }],
-		output_config: { format: { type: 'json_schema', schema } }
+		output_config: { effort, format: { type: 'json_schema', schema } }
 	} as Anthropic.Messages.MessageCreateParamsNonStreaming);
 
 	const duurMs = Date.now() - start;

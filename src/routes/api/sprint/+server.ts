@@ -7,6 +7,9 @@ import { TESTVOLGORDE } from '$lib/matrix';
 
 type ConceptInsert = Database['public']['Tables']['concepts']['Insert'];
 
+// AI-generatie (brief/analyse) met adaptive thinking duurt langer; ruimere Vercel-functietimeout.
+export const config = { maxDuration: 60 };
+
 const METRIC_KEYS = ['hook_rate', 'hold_rate', 'ctr', 'roas', 'cpa'] as const;
 
 function num(v: unknown): number | null {

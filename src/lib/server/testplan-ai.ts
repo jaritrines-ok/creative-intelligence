@@ -97,5 +97,5 @@ export async function genereerTestplan(input: TestplanInput) {
 		.filter(Boolean)
 		.join('\n\n');
 
-	return claudeJSON<Testplan>(SYSTEM, context, SCHEMA, 4000);
+	return claudeJSON<Testplan>(SYSTEM, context, SCHEMA);
 }

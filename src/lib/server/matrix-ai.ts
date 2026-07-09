@@ -108,5 +108,5 @@ export async function genereerMatrix(tm: TriggerMapContext) {
 		.filter(Boolean)
 		.join('\n\n');
 
-	return claudeJSON<{ concepten: VoorgesteldConcept[] }>(SYSTEM, context, SCHEMA, 4000);
+	return claudeJSON<{ concepten: VoorgesteldConcept[] }>(SYSTEM, context, SCHEMA);
 }

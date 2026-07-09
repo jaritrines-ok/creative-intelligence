@@ -191,12 +191,15 @@ export async function genereerTriggerMap(intakeTekst: string): Promise<Generatie
 
 	const response = await anthropic.messages.create({
 		model: CLAUDE_MODEL,
-		max_tokens: 8000,
-		thinking: { type: 'disabled' },
+		max_tokens: 16000,
+		// Adaptive thinking: model denkt zelf na over de diepte (denk-tokens tellen mee in max_tokens).
+		thinking: { type: 'adaptive' },
 		system: SYSTEM_PROMPT,
 		messages: [{ role: 'user', content: prompt }],
 		// Structured outputs: garandeert valide JSON volgens het schema.
-		output_config: { format: { type: 'json_schema', schema: TRIGGER_MAP_SCHEMA } }
+		// 'medium' i.p.v. 'high': trigger map is de zwaarste generatie (meeste output) —
+		// bij 'high' liep 'ie tegen de ~67s aan, óver de Vercel-timeout van 60s.
+		output_config: { effort: 'medium', format: { type: 'json_schema', schema: TRIGGER_MAP_SCHEMA } }
 	} as Anthropic.Messages.MessageCreateParamsNonStreaming);
 
 	const duurMs = Date.now() - start;
