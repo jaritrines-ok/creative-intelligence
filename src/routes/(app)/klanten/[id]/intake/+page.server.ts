@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ params, locals: { supabase } }) => 
 			.from('intake_bron4')
 			.select('*')
 			.eq('client_id', id)
-			.order('created_at', { ascending: true }),
+			.order('updated_at', { ascending: true }),
 		supabase.from('intake_bron5').select('*').eq('client_id', id).maybeSingle()
 	]);
 
