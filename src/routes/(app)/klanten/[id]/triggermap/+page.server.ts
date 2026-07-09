@@ -103,6 +103,7 @@ export const actions: Actions = {
 				taal_doelgroep: res.data.taal_doelgroep,
 				routines: res.data.routines,
 				kansen_vs_concurrenten: res.data.kansen_vs_concurrenten,
+				personas: (res.data.personas ?? []) as unknown as Json,
 				invalshoeken: res.data.invalshoeken as unknown as Json,
 				gegenereerd_door: user!.id
 			});

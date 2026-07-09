@@ -30,6 +30,14 @@ export function invalshoekStatus(inv: Invalshoek): InvalshoekStatus {
 	return inv.status ?? 'Nieuw';
 }
 
+/** Doelgroep-segment / persona — voedt de invalshoeken én het testplan. */
+export interface Persona {
+	naam: string;
+	omschrijving: string;
+	kernbehoefte: string;
+	kernbezwaar: string;
+}
+
 export interface TriggerMapData {
 	pijnpunten: string[];
 	wensen: string[];
@@ -37,6 +45,7 @@ export interface TriggerMapData {
 	taal_doelgroep: string[];
 	routines: string[];
 	kansen_vs_concurrenten: string[];
+	personas: Persona[];
 	invalshoeken: Invalshoek[];
 }
 
@@ -59,5 +68,6 @@ export const LEGE_TRIGGER_MAP: TriggerMapData = {
 	taal_doelgroep: [],
 	routines: [],
 	kansen_vs_concurrenten: [],
+	personas: [],
 	invalshoeken: []
 };

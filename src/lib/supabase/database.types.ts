@@ -29,6 +29,7 @@ export interface Database {
 					sector: string | null;
 					status: ClientStatus;
 					huidige_fase: ClientFase;
+					testplan: Json | null;
 					created_at: string;
 					updated_at: string;
 				};
@@ -39,6 +40,7 @@ export interface Database {
 					sector?: string | null;
 					status?: ClientStatus;
 					huidige_fase?: ClientFase;
+					testplan?: Json | null;
 					created_at?: string;
 					updated_at?: string;
 				};
@@ -49,6 +51,7 @@ export interface Database {
 					sector?: string | null;
 					status?: ClientStatus;
 					huidige_fase?: ClientFase;
+					testplan?: Json | null;
 					created_at?: string;
 					updated_at?: string;
 				};
@@ -211,6 +214,7 @@ export interface Database {
 					routines: Json | null;
 					kansen_vs_concurrenten: Json | null;
 					invalshoeken: Json | null;
+					personas: Json | null;
 					gegenereerd_door: string | null;
 					created_at: string;
 				};
@@ -226,6 +230,7 @@ export interface Database {
 					routines?: Json | null;
 					kansen_vs_concurrenten?: Json | null;
 					invalshoeken?: Json | null;
+					personas?: Json | null;
 					gegenereerd_door?: string | null;
 					created_at?: string;
 				};
@@ -241,6 +246,7 @@ export interface Database {
 					routines?: Json | null;
 					kansen_vs_concurrenten?: Json | null;
 					invalshoeken?: Json | null;
+					personas?: Json | null;
 					gegenereerd_door?: string | null;
 					created_at?: string;
 				};

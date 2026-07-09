@@ -11,6 +11,7 @@
 		INVALSHOEK_STATUSSEN,
 		invalshoekStatus,
 		type Invalshoek,
+		type Persona,
 		type Funnelfase,
 		type TekstSectieKey
 	} from '$lib/trigger-map';
@@ -41,6 +42,7 @@
 		taal_doelgroep: string[];
 		routines: string[];
 		kansen_vs_concurrenten: string[];
+		personas: Persona[];
 		invalshoeken: Invalshoek[];
 	}
 
@@ -56,6 +58,7 @@
 			taal_doelgroep: (v.taal_doelgroep as string[] | null) ?? [],
 			routines: (v.routines as string[] | null) ?? [],
 			kansen_vs_concurrenten: (v.kansen_vs_concurrenten as string[] | null) ?? [],
+			personas: ((v as { personas?: Persona[] | null }).personas as Persona[] | null) ?? [],
 			invalshoeken: (v.invalshoeken as Invalshoek[] | null) ?? []
 		}));
 	}
@@ -118,6 +121,23 @@
 			versieId: geselecteerd.id,
 			invalshoeken: geselecteerd.invalshoeken
 		});
+	}
+	function savePersonas() {
+		if (!geselecteerd) return;
+		return postJSON('/api/trigger-map', {
+			type: 'personas',
+			versieId: geselecteerd.id,
+			personas: geselecteerd.personas
+		});
+	}
+	function personaToevoegen() {
+		geselecteerd?.personas.push({ naam: '', omschrijving: '', kernbehoefte: '', kernbezwaar: '' });
+	}
+	function personaVerwijderen(p: Persona) {
+		if (!geselecteerd) return;
+		const i = geselecteerd.personas.indexOf(p);
+		if (i >= 0) geselecteerd.personas.splice(i, 1);
+		savePersonas();
 	}
 	function itemToevoegen(key: TekstSectieKey) {
 		geselecteerd?.[key].push('');
@@ -314,6 +334,67 @@
 					</Card.Content>
 				</Card.Root>
 			{/each}
+		</div>
+
+		<!-- Persona's / doelgroep-segmenten -->
+		<div class="space-y-3">
+			<div class="flex flex-wrap items-center justify-between gap-2">
+				<div>
+					<h3 class="text-base font-semibold">Persona's / doelgroep-segmenten</h3>
+					<p class="text-sm text-muted-foreground">
+						De segmenten waarop je content en het testplan zich richten.
+					</p>
+				</div>
+				{#if bewerkbaar}
+					<Button variant="outline" size="sm" onclick={personaToevoegen}>
+						<Plus class="size-4" />
+						Persona toevoegen
+					</Button>
+				{/if}
+			</div>
+
+			{#if geselecteerd.personas.length === 0}
+				<p class="rounded-md border border-dashed bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+					Nog geen persona's. Genereer een nieuwe trigger map of voeg ze handmatig toe.
+				</p>
+			{:else}
+				<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+					{#each geselecteerd.personas as p (p)}
+						<Card.Root>
+							{#if bewerkbaar}
+								<Card.Content class="space-y-2 pt-6">
+									<div class="flex items-center gap-2">
+										<Input bind:value={p.naam} onblur={savePersonas} placeholder="Naam segment" />
+										<Button
+											variant="ghost"
+											size="sm"
+											class="shrink-0 text-muted-foreground hover:text-destructive"
+											title="Verwijderen"
+											onclick={() => personaVerwijderen(p)}
+										>
+											<Trash2 class="size-4" />
+										</Button>
+									</div>
+									<Textarea bind:value={p.omschrijving} onblur={savePersonas} rows={2} placeholder="Omschrijving" />
+									<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+										<Input bind:value={p.kernbehoefte} onblur={savePersonas} placeholder="Kernbehoefte" />
+										<Input bind:value={p.kernbezwaar} onblur={savePersonas} placeholder="Kernbezwaar" />
+									</div>
+								</Card.Content>
+							{:else}
+								<Card.Header>
+									<Card.Title class="text-base">{p.naam}</Card.Title>
+								</Card.Header>
+								<Card.Content class="space-y-2 text-sm">
+									<p>{p.omschrijving}</p>
+									<p><span class="text-muted-foreground">Kernbehoefte:</span> {p.kernbehoefte}</p>
+									<p><span class="text-muted-foreground">Kernbezwaar:</span> {p.kernbezwaar}</p>
+								</Card.Content>
+							{/if}
+						</Card.Root>
+					{/each}
+				</div>
+			{/if}
 		</div>
 
 		<!-- Invalshoeken per funnelfase -->

@@ -48,6 +48,24 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 			return json({ ok: true });
 		}
 
+		case 'personas': {
+			const versieId = String(body.versieId ?? '');
+			if (!versieId) error(400, 'Ontbrekend id');
+			const raw = Array.isArray(body.personas) ? body.personas : [];
+			const schoon = raw.map((x: Record<string, unknown>) => ({
+				naam: String(x?.naam ?? ''),
+				omschrijving: String(x?.omschrijving ?? ''),
+				kernbehoefte: String(x?.kernbehoefte ?? ''),
+				kernbezwaar: String(x?.kernbezwaar ?? '')
+			}));
+			const { error: dbFout } = await supabase
+				.from('trigger_map_versions')
+				.update({ personas: schoon } as never)
+				.eq('id', versieId);
+			if (dbFout) error(500, dbFout.message);
+			return json({ ok: true });
+		}
+
 		case 'activeer': {
 			const clientId = String(body.clientId ?? '');
 			const versieId = String(body.versieId ?? '');

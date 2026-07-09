@@ -15,6 +15,9 @@ Geef output ALLEEN als valide JSON in dit exacte formaat:
   "taal_doelgroep": ["letterlijke zin1", "zin2"],
   "routines": ["item1", "item2"],
   "kansen_vs_concurrenten": ["item1", "item2"],
+  "personas": [
+    { "naam": "korte naam van het segment", "omschrijving": "wie is dit, 1-2 zinnen", "kernbehoefte": "wat wil dit segment vooral", "kernbezwaar": "grootste twijfel/drempel" }
+  ],
   "invalshoeken": [
     { "naam": "naam van invalshoek", "omschrijving": "2-3 zinnen", "funnelfase": "TOFU/MOFU/BOFU", "onderbouwing": "waarom kansrijk op basis van de data" }
   ]
@@ -27,6 +30,7 @@ Richtlijnen:
 - Taal doelgroep: 8-12 letterlijke woorden/zinnen uit de bronnen
 - Routines: 3-5 items
 - Kansen vs concurrenten: 3-5 concrete gaps die je ziet
+- Persona's: 2-4 duidelijk onderscheidende doelgroep-segmenten uit de data (bijv. verschillende koopmotieven of levensfases). Geen verzonnen segmenten.
 - Invalshoeken: exact 3 per funnelfase (3× TOFU, 3× MOFU, 3× BOFU = 9 in totaal). Binnen elke fase gesorteerd op kans. Elke invalshoek is een concrete, testbare hoek — geen herhaling van dezelfde hoek in meerdere fases.
 - Taal: Nederlands
 - Gebruik alleen wat uit de data blijkt — geen aannames`;
@@ -42,6 +46,20 @@ const TRIGGER_MAP_SCHEMA = {
 		taal_doelgroep: { type: 'array', items: { type: 'string' } },
 		routines: { type: 'array', items: { type: 'string' } },
 		kansen_vs_concurrenten: { type: 'array', items: { type: 'string' } },
+		personas: {
+			type: 'array',
+			items: {
+				type: 'object',
+				additionalProperties: false,
+				properties: {
+					naam: { type: 'string' },
+					omschrijving: { type: 'string' },
+					kernbehoefte: { type: 'string' },
+					kernbezwaar: { type: 'string' }
+				},
+				required: ['naam', 'omschrijving', 'kernbehoefte', 'kernbezwaar']
+			}
+		},
 		invalshoeken: {
 			type: 'array',
 			items: {
@@ -64,6 +82,7 @@ const TRIGGER_MAP_SCHEMA = {
 		'taal_doelgroep',
 		'routines',
 		'kansen_vs_concurrenten',
+		'personas',
 		'invalshoeken'
 	]
 };
