@@ -4,13 +4,14 @@ import type { Database } from '$lib/supabase/database.types';
 import { FUNNELFASES, PRIORITEITEN, CONCEPT_STATUSSEN } from '$lib/matrix';
 import { genereerMatrix } from '$lib/server/matrix-ai';
 import { CLAUDE_MODEL } from '$lib/server/claude';
+import { afgeleidePrioriteit, type InvalshoekScore } from '$lib/trigger-map';
 
 type ConceptInsert = Database['public']['Tables']['concepts']['Insert'];
 
 // AI-generatie met adaptive thinking duurt langer; ruimere Vercel-functietimeout.
 export const config = { maxDuration: 60 };
 
-const TEKST_VELDEN = ['invalshoek', 'format', 'structuur', 'creator_type', 'hypothese', 'variabele'];
+const TEKST_VELDEN = ['invalshoek', 'format', 'structuur', 'creator_type', 'hypothese', 'variabele', 'onderbouwing'];
 const FUNNEL = FUNNELFASES as string[];
 const PRIO = PRIORITEITEN as string[];
 const STATUS = CONCEPT_STATUSSEN as string[];
@@ -148,7 +149,7 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 								kernbehoefte?: string;
 								kernbezwaar?: string;
 							}>) ?? [],
-						invalshoeken:
+						invalshoeken: (
 							(tm.invalshoeken as Array<{
 								naam?: string;
 								omschrijving?: string;
@@ -156,7 +157,18 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 								funnelfase?: string;
 								status?: string;
 								gearchiveerd?: boolean;
+								score?: InvalshoekScore;
 							}>) ?? []
+						).map((i) => ({
+							naam: i.naam,
+							omschrijving: i.omschrijving,
+							onderbouwing: i.onderbouwing,
+							funnelfase: i.funnelfase,
+							status: i.status,
+							gearchiveerd: i.gearchiveerd,
+							// Goedgekeurde prioriteit uit de scorekaart (indien gescoord) → leidend in de matrix.
+							prioriteit: i.score ? afgeleidePrioriteit(i.score) : undefined
+						}))
 					},
 					richtlijnen
 				);

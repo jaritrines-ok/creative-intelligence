@@ -1,6 +1,52 @@
 /** Gedeelde types voor de trigger map (client + server). */
 
+import type { Prioriteit } from './supabase/database.types';
+
 export type Funnelfase = 'TOFU' | 'MOFU' | 'BOFU';
+
+/**
+ * RICE-light scorekaart per invalshoek — de transparante, controleerbare basis
+ * voor de prioriteit in de matrix. Elke factor op Laag/Middel/Hoog.
+ * - bereik:       hoe groot/belangrijk is het persona-segment dat de invalshoek raakt (Reach)
+ * - impact:       hoe sterk raakt 'ie een kernpijnpunt/wens/bezwaar (Impact)
+ * - bewijskracht: hoe sterk ondersteunt de intake-data deze invalshoek (Confidence)
+ * - effort:       productie-inspanning van het type creative dat 'ie vraagt (Hoog = zwaarder)
+ */
+export type ScoreNiveau = 'Laag' | 'Middel' | 'Hoog';
+export const SCORE_NIVEAUS: ScoreNiveau[] = ['Laag', 'Middel', 'Hoog'];
+
+export interface InvalshoekScore {
+	bereik: ScoreNiveau;
+	impact: ScoreNiveau;
+	bewijskracht: ScoreNiveau;
+	effort: ScoreNiveau;
+	/** Korte verantwoording van de scores (door AI voorgesteld, door de strateeg te controleren). */
+	toelichting?: string;
+}
+
+/** Labels + uitleg per score-factor, in weergavevolgorde. */
+export const SCORE_FACTOREN: Array<{ key: keyof InvalshoekScore; label: string; hint: string }> = [
+	{ key: 'bereik', label: 'Bereik', hint: 'Hoe groot/belangrijk is het persona-segment dat dit raakt?' },
+	{ key: 'impact', label: 'Impact', hint: 'Hoe sterk raakt het een kernpijnpunt/wens/bezwaar?' },
+	{ key: 'bewijskracht', label: 'Bewijskracht', hint: 'Hoe sterk ondersteunt de intake-data dit?' },
+	{ key: 'effort', label: 'Effort', hint: 'Productie-inspanning (Hoog = zwaarder/duurder).' }
+];
+
+const NIVEAU_WAARDE: Record<ScoreNiveau, number> = { Laag: 1, Middel: 2, Hoog: 3 };
+
+/** RICE-light score: (Bereik × Impact × Bewijskracht) / Effort. Hoger = hogere prioriteit. */
+export function riceScore(s: InvalshoekScore): number {
+	return (
+		(NIVEAU_WAARDE[s.bereik] * NIVEAU_WAARDE[s.impact] * NIVEAU_WAARDE[s.bewijskracht]) /
+		NIVEAU_WAARDE[s.effort]
+	);
+}
+
+/** Afgeleide prioriteit uit de scorekaart (deterministisch, dus navolgbaar). */
+export function afgeleidePrioriteit(s: InvalshoekScore): Prioriteit {
+	const r = riceScore(s);
+	return r >= 8 ? 'Hoog' : r >= 3 ? 'Middel' : 'Laag';
+}
 
 /** Levenscyclus van een invalshoek — houdt de trigger map "levend". */
 export type InvalshoekStatus = 'Nieuw' | 'In test' | 'Getest — werkt' | 'Getest — werkt niet';
@@ -23,6 +69,8 @@ export interface Invalshoek {
 	status?: InvalshoekStatus;
 	/** Gearchiveerde invalshoeken tellen niet meer mee en verschijnen niet in de matrix. */
 	gearchiveerd?: boolean;
+	/** RICE-light scorekaart; ontbreekt tot 'Scores voorstellen' is gedraaid of handmatig ingevuld. */
+	score?: InvalshoekScore;
 }
 
 /** Status van een invalshoek, met terugval op 'Nieuw' voor oudere data. */

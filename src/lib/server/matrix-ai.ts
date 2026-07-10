@@ -32,6 +32,8 @@ interface TriggerMapContext {
 		funnelfase?: string;
 		status?: string;
 		gearchiveerd?: boolean;
+		/** Prioriteit uit de (door de strateeg goedgekeurde) scorekaart; leidend als aanwezig. */
+		prioriteit?: string;
 	}>;
 }
 
@@ -89,7 +91,7 @@ Richtlijnen:
 - Kies "structuur" bij voorkeur uit: GRWM, Probleem-oplossing, POV, Testimonial, Dag-in-het-leven, Benefit bullets.
 - "creator_type": kort (bijv. "Micro-influencer", "Klant/UGC", "Merk zelf").
 - "hypothese": concreet en toetsbaar (Wij verwachten dat ... omdat ...).
-- "prioriteit" (Hoog/Middel/Laag): weeg af op (a) hoe sterk de invalshoek aansluit op een belangrijk pijnpunt/wens/kans, (b) hoeveel of hoe belangrijk het persona-segment is dat 'ie raakt, en (c) de funnelfase (warme BOFU vaak Hoog). Maak deze weging expliciet in de onderbouwing.
+- "prioriteit" (Hoog/Middel/Laag): als bij de invalshoek een "prioriteit" is meegegeven (uit de scorekaart), NEEM DIE EXACT OVER — dat is de door de strateeg goedgekeurde weging. Alleen als er géén prioriteit is meegegeven, weeg je zelf af op aansluiting bij pijnpunt/wens/kans, persona-bereik en funnelfase. Maak in de onderbouwing kort expliciet waarom deze prioriteit past.
 - "onderbouwing": 1-3 zinnen die transparant maken WAAROM dit concept in de matrix staat. Benoem concreet (a) waarom deze invalshoek kansrijk is — koppel het aan een specifiek pijnpunt, wens, bezwaar of kans uit de trigger map — en (b) waarom je deze prioriteit geeft. Dit is de verantwoording die de strateeg leest om je keuze te kunnen controleren; wees specifiek, niet generiek.
 - Taal: Nederlands. Gebruik de taal van de doelgroep waar passend. Baseer je op de trigger map — geen aannames.`;
 
@@ -99,11 +101,11 @@ export async function genereerMatrix(tm: TriggerMapContext, richtlijnen?: string
 	const context = [
 		'## Trigger map',
 		actieveInvalshoeken.length
-			? 'Invalshoeken (per funnelfase; status tussen haakjes; met onderbouwing = waarom kansrijk):\n' +
+			? 'Invalshoeken (per funnelfase; status + eventueel de vastgestelde prioriteit uit de scorekaart tussen haakjes):\n' +
 				actieveInvalshoeken
 					.map(
 						(i) =>
-							`- [${i.funnelfase ?? '?'}] ${i.naam ?? ''} (${i.status ?? 'Nieuw'}): ${i.omschrijving ?? ''}` +
+							`- [${i.funnelfase ?? '?'}] ${i.naam ?? ''} (${i.status ?? 'Nieuw'}${i.prioriteit ? `, prioriteit: ${i.prioriteit}` : ''}): ${i.omschrijving ?? ''}` +
 							(i.onderbouwing ? `\n    Onderbouwing: ${i.onderbouwing}` : '')
 					)
 					.join('\n') +

@@ -9,8 +9,13 @@
 		TRIGGER_MAP_SECTIES,
 		FUNNELFASES,
 		INVALSHOEK_STATUSSEN,
+		SCORE_NIVEAUS,
+		SCORE_FACTOREN,
 		invalshoekStatus,
+		afgeleidePrioriteit,
 		type Invalshoek,
+		type InvalshoekScore,
+		type ScoreNiveau,
 		type Persona,
 		type Funnelfase,
 		type TekstSectieKey
@@ -104,6 +109,11 @@
 		'Getest — werkt': 'border-brand-lime/50 bg-brand-lime/20 text-brand-green',
 		'Getest — werkt niet': 'border-red-300 bg-red-100 text-red-700'
 	};
+	const prioriteitKleur: Record<string, string> = {
+		Hoog: 'border-brand-lime/50 bg-brand-lime/20 text-brand-green',
+		Middel: 'border-amber-300 bg-amber-100 text-amber-800',
+		Laag: 'border-border bg-muted text-muted-foreground'
+	};
 
 	function saveSectie(key: TekstSectieKey) {
 		if (!geselecteerd) return;
@@ -165,6 +175,39 @@
 	function invalshoekArchiveer(inv: Invalshoek, waarde: boolean) {
 		inv.gearchiveerd = waarde;
 		saveInvalshoeken();
+	}
+
+	// ---- RICE-light scorekaart ----
+	const DEFAULT_SCORE: InvalshoekScore = {
+		bereik: 'Middel',
+		impact: 'Middel',
+		bewijskracht: 'Middel',
+		effort: 'Middel'
+	};
+	let bezigScores = $state(false);
+	let scoresFout = $state<string | null>(null);
+
+	function setScore(inv: Invalshoek, factor: keyof InvalshoekScore, waarde: ScoreNiveau) {
+		inv.score = { ...(inv.score ?? DEFAULT_SCORE), [factor]: waarde };
+		saveInvalshoeken();
+	}
+
+	async function scoresVoorstellen() {
+		if (!geselecteerd) return;
+		bezigScores = true;
+		scoresFout = null;
+		try {
+			const { invalshoeken } = await postJSON<{ invalshoeken: Invalshoek[] }>('/api/trigger-map', {
+				type: 'scores',
+				clientId: data.client.id,
+				versieId: geselecteerd.id
+			});
+			geselecteerd.invalshoeken = invalshoeken;
+		} catch (e) {
+			scoresFout = e instanceof Error ? e.message : 'Scores voorstellen mislukt';
+		} finally {
+			bezigScores = false;
+		}
 	}
 	async function activeer(id: string) {
 		await postJSON('/api/trigger-map', {
@@ -403,19 +446,40 @@
 				<div>
 					<h3 class="text-base font-semibold">Invalshoeken per funnelfase</h3>
 					<p class="text-sm text-muted-foreground">
-						Deze test je als eerste. Geef per invalshoek de status door zodra je 'm getest hebt.
+						Deze test je als eerste. De scorekaart (Bereik · Impact · Bewijskracht · Effort) bepaalt de
+						prioriteit die de matrix overneemt.
 					</p>
 				</div>
-				{#if aantalGearchiveerd > 0}
-					<button
-						type="button"
-						class="text-sm font-medium text-muted-foreground hover:text-foreground"
-						onclick={() => (toonGearchiveerd = !toonGearchiveerd)}
-					>
-						{toonGearchiveerd ? 'Verberg' : 'Toon'} gearchiveerd ({aantalGearchiveerd})
-					</button>
-				{/if}
+				<div class="flex items-center gap-3">
+					{#if aantalGearchiveerd > 0}
+						<button
+							type="button"
+							class="text-sm font-medium text-muted-foreground hover:text-foreground"
+							onclick={() => (toonGearchiveerd = !toonGearchiveerd)}
+						>
+							{toonGearchiveerd ? 'Verberg' : 'Toon'} gearchiveerd ({aantalGearchiveerd})
+						</button>
+					{/if}
+					{#if bewerkbaar}
+						<Button variant="outline" size="sm" onclick={scoresVoorstellen} disabled={bezigScores}>
+							{#if bezigScores}
+								<LoaderCircle class="size-4 animate-spin" />
+								Scoren…
+							{:else}
+								<Sparkles class="size-4" />
+								Scores voorstellen
+							{/if}
+						</Button>
+					{/if}
+				</div>
 			</div>
+
+			{#if scoresFout}
+				<div class="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+					<TriangleAlert class="size-4 shrink-0" />
+					{scoresFout}
+				</div>
+			{/if}
 
 			{#each invalshoekenPerFase as groep (groep.fase)}
 				<div class="space-y-3">
@@ -495,6 +559,42 @@
 												<span class="mb-1 block text-xs font-medium text-muted-foreground">Onderbouwing</span>
 												<Textarea bind:value={inv.onderbouwing} onblur={saveInvalshoeken} rows={2} />
 											</div>
+
+											<!-- RICE-light scorekaart -->
+											<div class="space-y-2 rounded-md border border-dashed bg-muted/20 p-2.5">
+												<div class="flex items-center justify-between gap-2">
+													<span class="text-xs font-semibold text-muted-foreground">Scorekaart</span>
+													{#if inv.score}
+														<Badge
+															variant="outline"
+															class={cn('font-medium', prioriteitKleur[afgeleidePrioriteit(inv.score)])}
+														>
+															Prioriteit: {afgeleidePrioriteit(inv.score)}
+														</Badge>
+													{:else}
+														<span class="text-xs text-muted-foreground">nog niet gescoord</span>
+													{/if}
+												</div>
+												<div class="grid grid-cols-2 gap-2">
+													{#each SCORE_FACTOREN as f (f.key)}
+														<div>
+															<span class="mb-0.5 block text-xs text-muted-foreground" title={f.hint}>{f.label}</span>
+															<select
+																value={inv.score?.[f.key] ?? ''}
+																onchange={(e) => setScore(inv, f.key, e.currentTarget.value as ScoreNiveau)}
+																class="h-8 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+															>
+																<option value="" disabled>—</option>
+																{#each SCORE_NIVEAUS as n (n)}<option value={n}>{n}</option>{/each}
+															</select>
+														</div>
+													{/each}
+												</div>
+												{#if inv.score?.toelichting}
+													<p class="text-xs text-muted-foreground">{inv.score.toelichting}</p>
+												{/if}
+											</div>
+
 											<Button
 												variant="ghost"
 												size="sm"
@@ -528,6 +628,23 @@
 												</p>
 												<p class="mt-0.5 text-muted-foreground">{inv.onderbouwing}</p>
 											</div>
+											{#if inv.score}
+												<div class="flex flex-wrap items-center gap-2">
+													<Badge
+														variant="outline"
+														class={cn('font-medium', prioriteitKleur[afgeleidePrioriteit(inv.score)])}
+													>
+														Prioriteit: {afgeleidePrioriteit(inv.score)}
+													</Badge>
+													<span class="text-xs text-muted-foreground">
+														Bereik {inv.score.bereik} · Impact {inv.score.impact} · Bewijskracht {inv.score.bewijskracht}
+														· Effort {inv.score.effort}
+													</span>
+												</div>
+												{#if inv.score.toelichting}
+													<p class="text-xs text-muted-foreground">{inv.score.toelichting}</p>
+												{/if}
+											{/if}
 										</Card.Content>
 									{/if}
 								</Card.Root>

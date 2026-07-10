@@ -5,6 +5,7 @@
 	import { saver, postJSON } from '$lib/saver.svelte';
 	import { cn } from '$lib/utils';
 	import type { Concept } from '$lib/supabase/database.types';
+	import { afgeleidePrioriteit } from '$lib/trigger-map';
 	import {
 		FUNNELFASES,
 		FORMATS,
@@ -115,7 +116,8 @@
 					invalshoek: inv.naam,
 					hypothese: inv.omschrijving,
 					variabele: 'Invalshoek',
-					prioriteit: 'Hoog',
+					prioriteit: inv.score ? afgeleidePrioriteit(inv.score) : 'Hoog',
+					onderbouwing: inv.score?.toelichting ?? inv.onderbouwing ?? null,
 					status: 'Idee'
 				}
 			});
