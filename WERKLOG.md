@@ -25,12 +25,19 @@ Alle generaties gebruiken **structured outputs** (JSON-schema → gegarandeerd v
 - **Effort:** `medium` (zwaarste generatie; `high` liep ~67s, over de Vercel-timeout).
 - **Let op:** het is een *synthese/distillatie*, geen 1-op-1 afvinklijst. Alle input gaat erin; het model vat samen.
 
+### Scorekaart (`src/lib/trigger-map.ts` + `src/lib/server/scoring-ai.ts`) — prioriteit per invalshoek
+- **Doel:** de prioriteit transparant en controleerbaar maken vóórdat de matrix wordt gemaakt (mens in de lus).
+- **Model:** RICE-light per invalshoek — **Bereik** (persona-segment), **Impact** (kernpijnpunt/wens), **Bewijskracht** (hoeveel intake-bronnen ondersteunen), **Effort** (productie-inspanning), elk Laag/Middel/Hoog.
+- **Formule:** `(Bereik × Impact × Bewijskracht) / Effort` met L/M/H → 1/2/3. Prioriteit-banden: ≥8 = Hoog, ≥3 = Middel, anders Laag (`afgeleidePrioriteit`).
+- **Werkwijze:** "Scores voorstellen" laat Claude de scores + toelichting voorstellen (effort `low`); de strateeg controleert/stelt bij (L/M/H-selects, auto-save). De matrix erft de afgeleide prioriteit exact.
+- **Kritische noot:** de RICE-getallen blijven schattingen; de winst zit in *expliciet en consistent* maken + menselijke controle, niet in schijnprecisie. Echte validatie volgt uit de kalibratie-loop (voorspelde prio vs. sprintresultaten).
+
 ### Matrix (`src/lib/server/matrix-ai.ts`) — trigger map → testopzet
 - **Input aan Claude:** de invalshoeken per funnelfase (met omschrijving + **onderbouwing** + status; gearchiveerde worden overgeslagen, en "Getest — werkt" worden overgeslagen tenzij er te weinig overblijven), de **persona's**, pijnpunten, wensen, bezwaren, taal, kansen, én optioneel de **extra sturing** (vrij tekstveld van de strateeg).
 - **Methode / principe:**
   1. **Eén concept per invalshoek**, dekt TOFU/MOFU/BOFU af.
   2. **Schoon testen:** de eerste ronde test de *invalshoek*, dus per funnelfase blijven format/structuur/creator **gelijk** en varieert alleen de invalshoek. Testvolgorde = Invalshoek → Format → Structuur → Creator.
-  3. **Prioriteit (Hoog/Middel/Laag)** wordt gewogen op (a) hoe sterk de invalshoek aansluit op een pijnpunt/wens/kans, (b) hoe belangrijk het persona-segment is dat 'ie raakt, (c) funnelfase (warme BOFU vaak Hoog).
+  3. **Prioriteit (Hoog/Middel/Laag)** komt uit de **scorekaart** (zie hieronder): de matrix neemt de door de strateeg goedgekeurde prioriteit exact over. Alleen als een invalshoek nog niet gescoord is, weegt Claude zelf af (aansluiting pijnpunt/wens/kans, persona-bereik, funnelfase).
   4. **Onderbouwing per concept:** 1-3 zinnen die (a) de invalshoek koppelen aan een concreet trigger map-element en (b) de prioriteit verantwoorden. Zichtbaar via de ℹ️-knop in de matrix.
 - **Weergavevolgorde in de tabel** (`sorteerConcepten`, `src/lib/matrix.ts`): funnelfase (TOFU→MOFU→BOFU) → prioriteit (Hoog→Middel→Laag) → aanmaakdatum. Dit is mechanisch/deterministisch.
 - **Effort:** `low` (met de rijke context is diep nadenken minder nodig; `high`/`medium` liepen ~100s/~88s, over de 60s Vercel-timeout; `low` ≈ 41s).
@@ -63,6 +70,14 @@ Alle generaties gebruiken **structured outputs** (JSON-schema → gegarandeerd v
 ---
 
 ## Wijzigingen (nieuwste boven)
+
+### 2026-07-10 — Scorekaart: RICE-light prioriteit per invalshoek · `2b10220`
+- **Wat:** transparante tussenstap tussen trigger map en matrix. Per invalshoek een RICE-light score (Bereik · Impact · Bewijskracht · Effort, elk L/M/H) → deterministisch afgeleide prioriteit. "Scores voorstellen" (AI) vult de scores + toelichting; de strateeg controleert/stelt bij (L/M/H-selects). De matrix neemt de goedgekeurde prioriteit exact over.
+- **Waarom:** de prioriteit navolgbaar en controleerbaar maken (niet meer "de LLM gokt"), met de mens in de lus vóórdat de matrix gemaakt wordt.
+- **Model/formule:** RICE-light = (Bereik × Impact × Bewijskracht) / Effort, met L/M/H → 1/2/3. Prioriteit-banden: ≥8 Hoog, ≥3 Middel, anders Laag. Zie `src/lib/trigger-map.ts` (`riceScore`, `afgeleidePrioriteit`).
+- **Bug onderweg:** het model zette de funnelfase vóór de naam → koppeling faalde (0/9). Opgelost met een schone prompt + robuuste naam-normalisatie (strip `[FASE]`-prefix).
+- **Verificatie (klant Test):** 9/9 invalshoeken gescoord; RICE→prioriteit klopt; matrix-prioriteit matcht 9/9 met de scorekaart; UI rendert (knop + 36 selects + 9 badges); 0 console-fouten; `svelte-check` 0 fouten.
+- **Migratie:** geen (scores in `trigger_map_versions.invalshoeken` jsonb).
 
 ### 2026-07-10 — Matrix: betere weging, extra sturing & sluitende loop · `62044ae`
 - **Wat:** (1) persona's + invalshoek-onderbouwing meegegeven aan de matrix-generatie; prioriteit weegt persona-bereik + aansluiting mee. (2) Vrij "Extra sturing"-veld bij "Opzet genereren" (bv. benaming insuline vs. medicatie, gezicht-in-beeld). (3) Loop gesloten: "Volgende testronde genereren" gebruikt de learning-analyse om 2-4 varianten van de volgende testvariabele te maken i.p.v. één lege kopie.
