@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { Database, Json } from '$lib/supabase/database.types';
-import { genereerBrief, analyseerResultaat } from '$lib/server/sprint-ai';
+import { genereerBrief, analyseerResultaat, genereerVolgendeTestronde } from '$lib/server/sprint-ai';
 import { CLAUDE_MODEL } from '$lib/server/claude';
 import { TESTVOLGORDE } from '$lib/matrix';
 
@@ -181,25 +181,69 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 			const idx = TESTVOLGORDE.indexOf(bron.variabele as (typeof TESTVOLGORDE)[number]);
 			const volgende = idx >= 0 && idx < TESTVOLGORDE.length - 1 ? TESTVOLGORDE[idx + 1] : 'Format';
 
-			const kopie: ConceptInsert = {
-				client_id: bron.client_id,
-				funnelfase: bron.funnelfase,
-				invalshoek: bron.invalshoek,
-				format: bron.format,
-				structuur: bron.structuur,
-				creator_type: bron.creator_type,
-				hypothese: bron.hypothese,
-				prioriteit: bron.prioriteit,
-				variabele: volgende,
-				status: 'Idee'
-			};
-			const { data, error: dbFout } = await supabase
-				.from('concepts')
-				.insert(kopie)
-				.select('*')
-				.single();
-			if (dbFout || !data) error(500, dbFout?.message ?? 'Vervolg maken mislukt');
-			return json({ concept: data, volgendeVariabele: volgende });
+			try {
+				const res = await genereerVolgendeTestronde({
+					winnaar: {
+						funnelfase: bron.funnelfase,
+						invalshoek: bron.invalshoek,
+						format: bron.format,
+						structuur: bron.structuur,
+						creator_type: bron.creator_type,
+						hypothese: bron.hypothese,
+						variabele: bron.variabele
+					},
+					volgendeVariabele: volgende,
+					metrics: {
+						hook_rate: bron.hook_rate,
+						hold_rate: bron.hold_rate,
+						ctr: bron.ctr,
+						roas: bron.roas,
+						cpa: bron.cpa
+					},
+					observatie: bron.observatie,
+					analyse: (bron.ai_analyse as { wat_werkte?: string; volgende_stap?: string } | null) ?? null
+				});
+
+				await supabase.from('ai_logs').insert({
+					client_id: bron.client_id,
+					gebruiker_id: user.id,
+					module: 'vervolg',
+					model: res.model,
+					prompt: res.prompt,
+					response: res.response,
+					tokens_input: res.tokensInput,
+					tokens_output: res.tokensOutput,
+					duur_ms: res.duurMs
+				});
+
+				const rijen: ConceptInsert[] = res.data.concepten.map((c) => ({
+					client_id: bron.client_id,
+					funnelfase: c.funnelfase,
+					invalshoek: c.invalshoek,
+					format: c.format,
+					structuur: c.structuur,
+					creator_type: c.creator_type,
+					hypothese: c.hypothese,
+					prioriteit: c.prioriteit,
+					onderbouwing: c.onderbouwing,
+					variabele: volgende,
+					status: 'Idee'
+				}));
+				const { data, error: dbFout } = await supabase.from('concepts').insert(rijen).select('*');
+				if (dbFout || !data) error(500, dbFout?.message ?? 'Opslaan mislukt');
+				return json({ concepten: data, volgendeVariabele: volgende });
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : 'onbekende fout';
+				await supabase.from('ai_logs').insert({
+					client_id: bron.client_id,
+					gebruiker_id: user.id,
+					module: 'vervolg',
+					model: CLAUDE_MODEL,
+					response: 'FOUT: ' + msg
+				});
+				error(500, 'Volgende testronde genereren mislukt: ' + msg);
+			}
+			break;
 		}
 
 		default:

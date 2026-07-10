@@ -122,6 +122,9 @@
 			concepten.push(concept);
 		}
 	}
+	let richtlijnen = $state('');
+	let toonRichtlijnen = $state(false);
+
 	async function genereerMatrix() {
 		if (concepten.length && !confirm('Een matrix-opzet genereren? De voorgestelde concepten worden toegevoegd aan de bestaande.')) {
 			return;
@@ -131,7 +134,8 @@
 		try {
 			const { concepten: nieuw } = await postJSON<{ concepten: Concept[] }>('/api/concepts', {
 				type: 'genereer',
-				clientId: data.client.id
+				clientId: data.client.id,
+				richtlijnen
 			});
 			concepten.push(...nieuw);
 		} catch (e) {
@@ -243,6 +247,32 @@
 			{#if i < TESTVOLGORDE.length - 1}<span class="text-muted-foreground">→</span>{/if}
 		{/each}
 	</div>
+
+	<!-- Extra sturing voor de generatie -->
+	{#if data.heeftTriggerMap}
+		<div>
+			<button
+				type="button"
+				class="text-sm font-medium text-muted-foreground hover:text-foreground"
+				onclick={() => (toonRichtlijnen = !toonRichtlijnen)}
+			>
+				{toonRichtlijnen ? '−' : '+'} Extra sturing meegeven aan "Opzet genereren"{richtlijnen.trim()
+					? ' (actief)'
+					: ' (optioneel)'}
+			</button>
+			{#if toonRichtlijnen}
+				<Textarea
+					class="mt-2"
+					bind:value={richtlijnen}
+					rows={3}
+					placeholder={'Bijv. "test ook de benaming: insuline vs. medicatie", "varieer gezicht-in-beeld vs. geen gezicht", "focus op de reis/vakantie-context"…'}
+				/>
+				<p class="mt-1 text-xs text-muted-foreground">
+					Claude neemt dit expliciet mee in de concepten en prioriteit bij de volgende generatie.
+				</p>
+			{/if}
+		</div>
+	{/if}
 
 	<!-- Voorstel uit trigger map -->
 	{#if bezigGenereren && actief.length === 0}

@@ -25,7 +25,9 @@
 	});
 
 	let bezigAnalyse = $state<Record<string, boolean>>({});
+	let bezigVervolg = $state<Record<string, boolean>>({});
 	let fout = $state<string | null>(null);
+	let vervolgMelding = $state<string | null>(null);
 
 	const veldClass =
 		'h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none';
@@ -67,11 +69,21 @@
 		}
 	}
 	async function vervolg(c: Concept) {
-		const { concept } = await postJSON<{ concept: Concept }>('/api/sprint', {
-			type: 'vervolg',
-			id: c.id
-		});
-		concepten.push(concept);
+		bezigVervolg[c.id] = true;
+		fout = null;
+		vervolgMelding = null;
+		try {
+			const { concepten: nieuw, volgendeVariabele } = await postJSON<{
+				concepten: Concept[];
+				volgendeVariabele: string;
+			}>('/api/sprint', { type: 'vervolg', id: c.id });
+			concepten.push(...nieuw);
+			vervolgMelding = `${nieuw.length} nieuwe concepten aangemaakt om "${volgendeVariabele}" te testen (invalshoek + winnende variabelen gelijk gehouden). Je vindt ze in de Matrix.`;
+		} catch (e) {
+			fout = e instanceof Error ? e.message : 'Volgende testronde genereren mislukt';
+		} finally {
+			bezigVervolg[c.id] = false;
+		}
 	}
 
 	function analyse(c: Concept): Analyse | null {
@@ -118,6 +130,13 @@
 		<div class="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
 			<TriangleAlert class="size-4 shrink-0" />
 			{fout}
+		</div>
+	{/if}
+
+	{#if vervolgMelding}
+		<div class="flex items-center gap-2 rounded-md border border-brand-lime/40 bg-brand-mint/50 px-3 py-2 text-sm text-brand-green">
+			<Check class="size-4 shrink-0" />
+			{vervolgMelding}
 		</div>
 	{/if}
 
@@ -196,9 +215,14 @@
 							{/if}
 						</Button>
 						{#if c.is_winnaar}
-							<Button variant="outline" size="sm" onclick={() => vervolg(c)}>
-								<GitBranch class="size-4" />
-								Maak vervolg-concept
+							<Button variant="outline" size="sm" onclick={() => vervolg(c)} disabled={bezigVervolg[c.id]}>
+								{#if bezigVervolg[c.id]}
+									<LoaderCircle class="size-4 animate-spin" />
+									Volgende ronde genereren…
+								{:else}
+									<GitBranch class="size-4" />
+									Volgende testronde genereren
+								{/if}
 							</Button>
 						{/if}
 					</div>

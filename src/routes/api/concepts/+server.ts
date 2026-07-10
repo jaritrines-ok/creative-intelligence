@@ -123,30 +123,43 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 			const clientId = String(body.clientId ?? '');
 			if (!clientId) error(400, 'Ontbrekende klant');
 
+			const richtlijnen = body.richtlijnen == null ? '' : String(body.richtlijnen);
+
 			const { data: tm } = await supabase
 				.from('trigger_map_versions')
-				.select('pijnpunten, wensen, bezwaren, taal_doelgroep, kansen_vs_concurrenten, invalshoeken')
+				.select('pijnpunten, wensen, bezwaren, taal_doelgroep, kansen_vs_concurrenten, personas, invalshoeken')
 				.eq('client_id', clientId)
 				.eq('is_actief', true)
 				.maybeSingle();
 			if (!tm) error(400, 'Genereer eerst een trigger map — die vormt de basis voor de matrix.');
 
 			try {
-				const res = await genereerMatrix({
-					pijnpunten: (tm.pijnpunten as string[]) ?? [],
-					wensen: (tm.wensen as string[]) ?? [],
-					bezwaren: (tm.bezwaren as string[]) ?? [],
-					taal_doelgroep: (tm.taal_doelgroep as string[]) ?? [],
-					kansen_vs_concurrenten: (tm.kansen_vs_concurrenten as string[]) ?? [],
-					invalshoeken:
-						(tm.invalshoeken as Array<{
-							naam?: string;
-							omschrijving?: string;
-							funnelfase?: string;
-							status?: string;
-							gearchiveerd?: boolean;
-						}>) ?? []
-				});
+				const res = await genereerMatrix(
+					{
+						pijnpunten: (tm.pijnpunten as string[]) ?? [],
+						wensen: (tm.wensen as string[]) ?? [],
+						bezwaren: (tm.bezwaren as string[]) ?? [],
+						taal_doelgroep: (tm.taal_doelgroep as string[]) ?? [],
+						kansen_vs_concurrenten: (tm.kansen_vs_concurrenten as string[]) ?? [],
+						personas:
+							(tm.personas as Array<{
+								naam?: string;
+								omschrijving?: string;
+								kernbehoefte?: string;
+								kernbezwaar?: string;
+							}>) ?? [],
+						invalshoeken:
+							(tm.invalshoeken as Array<{
+								naam?: string;
+								omschrijving?: string;
+								onderbouwing?: string;
+								funnelfase?: string;
+								status?: string;
+								gearchiveerd?: boolean;
+							}>) ?? []
+					},
+					richtlijnen
+				);
 
 				await supabase.from('ai_logs').insert({
 					client_id: clientId,

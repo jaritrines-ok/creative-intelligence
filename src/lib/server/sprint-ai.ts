@@ -86,6 +86,53 @@ Richtlijnen:
 - Als een concept wint: adviseer de volgende variabele in de testvolgorde te testen op dit concept
 - Baseer je alleen op de aangeleverde cijfers en observatie — geen aannames`;
 
+/** Concepten-schema voor de volgende testronde (varianten van de volgende variabele). */
+const VERVOLG_SCHEMA = {
+	type: 'object',
+	additionalProperties: false,
+	properties: {
+		concepten: {
+			type: 'array',
+			items: {
+				type: 'object',
+				additionalProperties: false,
+				properties: {
+					funnelfase: { type: 'string', enum: ['TOFU', 'MOFU', 'BOFU'] },
+					invalshoek: { type: 'string' },
+					format: { type: 'string' },
+					structuur: { type: 'string' },
+					creator_type: { type: 'string' },
+					hypothese: { type: 'string' },
+					prioriteit: { type: 'string', enum: ['Hoog', 'Middel', 'Laag'] },
+					onderbouwing: { type: 'string' }
+				},
+				required: [
+					'funnelfase',
+					'invalshoek',
+					'format',
+					'structuur',
+					'creator_type',
+					'hypothese',
+					'prioriteit',
+					'onderbouwing'
+				]
+			}
+		}
+	},
+	required: ['concepten']
+};
+
+export interface VervolgConcept {
+	funnelfase: 'TOFU' | 'MOFU' | 'BOFU';
+	invalshoek: string;
+	format: string;
+	structuur: string;
+	creator_type: string;
+	hypothese: string;
+	prioriteit: 'Hoog' | 'Middel' | 'Laag';
+	onderbouwing: string;
+}
+
 function conceptTekst(c: ConceptContext): string {
 	return [
 		`Funnelfase: ${c.funnelfase ?? '—'}`,
@@ -138,4 +185,48 @@ export async function analyseerResultaat(
 	].join('\n');
 
 	return claudeJSON<Analyse>(ANALYSE_SYSTEM, context, ANALYSE_SCHEMA);
+}
+
+const VERVOLG_SYSTEM = `Je bent een Creative Social Ads Strateeg bij Online Klik. Een concept heeft gewonnen in de vorige testronde. Volgens de testvolgorde (Invalshoek → Format → Structuur → Creator) is de volgende variabele die getest wordt aangegeven. Jouw taak: stel de volgende testronde samen.
+
+Geef output ALLEEN als valide JSON in dit formaat:
+{
+  "concepten": [
+    { "funnelfase": "TOFU/MOFU/BOFU", "invalshoek": "...", "format": "...", "structuur": "...", "creator_type": "...", "hypothese": "...", "prioriteit": "Hoog/Middel/Laag", "onderbouwing": "..." }
+  ]
+}
+
+Strikte regels:
+- Maak 2 tot 4 varianten die ALLEEN de aangegeven volgende variabele variëren. Alle andere dimensies (funnelfase, invalshoek, en de niet-geteste variabelen) blijven IDENTIEK aan het winnende concept — dat is schoon testen.
+- Voorbeeld: als de volgende variabele "Format" is, houd je invalshoek/structuur/creator_type gelijk aan de winnaar en zet je per variant een ander format.
+- "hypothese": concreet en toetsbaar, en gebruik de learning van de vorige ronde (wat werkte) als onderbouwing van je keuzes.
+- "onderbouwing": 1-2 zinnen — waarom deze variant kansrijk is gegeven de winnende resultaten en de learning.
+- Kies formats bij voorkeur uit: Video UGC, Static, Motion graphic, Carousel. Structuren uit: GRWM, Probleem-oplossing, POV, Testimonial, Dag-in-het-leven, Benefit bullets. Creator kort (Micro-influencer, Klant/UGC, Merk zelf).
+- Taal: Nederlands. Baseer je op de aangeleverde data — geen aannames.`;
+
+/** Stelt de volgende testronde samen: varianten van de volgende testvariabele, o.b.v. de winnaar + learning. */
+export async function genereerVolgendeTestronde(input: {
+	winnaar: ConceptContext;
+	volgendeVariabele: string;
+	metrics: { hook_rate?: number | null; hold_rate?: number | null; ctr?: number | null; roas?: number | null; cpa?: number | null };
+	observatie: string | null;
+	analyse: { wat_werkte?: string; volgende_stap?: string } | null;
+}) {
+	const context = [
+		`## Winnend concept (de basis — alles behalve "${input.volgendeVariabele}" blijft gelijk)`,
+		conceptTekst(input.winnaar),
+		'',
+		`## Volgende te testen variabele\n${input.volgendeVariabele}`,
+		'',
+		'## Resultaten winnaar',
+		`Hook rate: ${input.metrics.hook_rate ?? '—'}% · Hold rate: ${input.metrics.hold_rate ?? '—'}% · CTR: ${input.metrics.ctr ?? '—'}% · ROAS: ${input.metrics.roas ?? '—'}x · CPA: €${input.metrics.cpa ?? '—'}`,
+		input.observatie?.trim() ? `Observatie: ${input.observatie.trim()}` : '',
+		input.analyse?.wat_werkte ? `## Learning — wat werkte\n${input.analyse.wat_werkte}` : '',
+		input.analyse?.volgende_stap ? `## Learning — geadviseerde volgende stap\n${input.analyse.volgende_stap}` : ''
+	]
+		.filter(Boolean)
+		.join('\n');
+
+	// effort 'medium': genereert concepten met onderbouwing; medium houdt de duur onder de Vercel-timeout.
+	return claudeJSON<{ concepten: VervolgConcept[] }>(VERVOLG_SYSTEM, context, VERVOLG_SCHEMA, 16000, 'medium');
 }
