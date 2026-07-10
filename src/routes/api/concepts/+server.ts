@@ -95,6 +95,7 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 				hypothese: bron.hypothese,
 				variabele: bron.variabele,
 				prioriteit: bron.prioriteit,
+				onderbouwing: bron.onderbouwing,
 				status: 'Idee'
 			};
 			const { data, error: dbFout } = await supabase
@@ -169,6 +170,7 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 					hypothese: c.hypothese,
 					variabele: c.variabele,
 					prioriteit: c.prioriteit,
+					onderbouwing: c.onderbouwing,
 					status: 'Idee'
 				}));
 				const { data, error: dbFout } = await supabase.from('concepts').insert(rijen).select('*');

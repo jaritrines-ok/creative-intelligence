@@ -10,6 +10,7 @@ export interface VoorgesteldConcept {
 	hypothese: string;
 	variabele: string;
 	prioriteit: Prioriteit;
+	onderbouwing: string;
 }
 
 interface TriggerMapContext {
@@ -44,7 +45,8 @@ const SCHEMA = {
 					creator_type: { type: 'string' },
 					hypothese: { type: 'string' },
 					variabele: { type: 'string' },
-					prioriteit: { type: 'string', enum: ['Hoog', 'Middel', 'Laag'] }
+					prioriteit: { type: 'string', enum: ['Hoog', 'Middel', 'Laag'] },
+					onderbouwing: { type: 'string' }
 				},
 				required: [
 					'funnelfase',
@@ -54,7 +56,8 @@ const SCHEMA = {
 					'creator_type',
 					'hypothese',
 					'variabele',
-					'prioriteit'
+					'prioriteit',
+					'onderbouwing'
 				]
 			}
 		}
@@ -67,7 +70,7 @@ const SYSTEM = `Je bent een Creative Social Ads Strateeg bij Online Klik. Op bas
 Geef output ALLEEN als valide JSON in dit formaat:
 {
   "concepten": [
-    { "funnelfase": "TOFU/MOFU/BOFU", "invalshoek": "...", "format": "...", "structuur": "...", "creator_type": "...", "hypothese": "...", "variabele": "...", "prioriteit": "Hoog/Middel/Laag" }
+    { "funnelfase": "TOFU/MOFU/BOFU", "invalshoek": "...", "format": "...", "structuur": "...", "creator_type": "...", "hypothese": "...", "variabele": "...", "prioriteit": "Hoog/Middel/Laag", "onderbouwing": "..." }
   ]
 }
 
@@ -80,6 +83,7 @@ Richtlijnen:
 - "creator_type": kort (bijv. "Micro-influencer", "Klant/UGC", "Merk zelf").
 - "hypothese": concreet en toetsbaar (Wij verwachten dat ... omdat ...).
 - "prioriteit": op basis van kans en funnelfase (warme BOFU vaak Hoog).
+- "onderbouwing": 1-3 zinnen die transparant maken WAAROM dit concept in de matrix staat. Benoem concreet (a) waarom deze invalshoek kansrijk is — koppel het aan een specifiek pijnpunt, wens, bezwaar of kans uit de trigger map — en (b) waarom je deze prioriteit geeft. Dit is de verantwoording die de strateeg leest om je keuze te kunnen controleren; wees specifiek, niet generiek.
 - Taal: Nederlands. Gebruik de taal van de doelgroep waar passend. Baseer je op de trigger map — geen aannames.`;
 
 export async function genereerMatrix(tm: TriggerMapContext) {

@@ -287,6 +287,7 @@ export interface Database {
 					creator_type: string | null;
 					hypothese: string | null;
 					variabele: string | null;
+					onderbouwing: string | null;
 					prioriteit: Prioriteit | null;
 					status: ConceptStatus;
 					volgorde: number | null;
@@ -313,6 +314,7 @@ export interface Database {
 					creator_type?: string | null;
 					hypothese?: string | null;
 					variabele?: string | null;
+					onderbouwing?: string | null;
 					prioriteit?: Prioriteit | null;
 					status?: ConceptStatus;
 					volgorde?: number | null;
@@ -339,6 +341,7 @@ export interface Database {
 					creator_type?: string | null;
 					hypothese?: string | null;
 					variabele?: string | null;
+					onderbouwing?: string | null;
 					prioriteit?: Prioriteit | null;
 					status?: ConceptStatus;
 					volgorde?: number | null;

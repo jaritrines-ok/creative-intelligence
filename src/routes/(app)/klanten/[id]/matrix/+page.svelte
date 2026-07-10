@@ -26,6 +26,7 @@
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import ClipboardList from '@lucide/svelte/icons/clipboard-list';
+	import Info from '@lucide/svelte/icons/info';
 
 	let { data } = $props();
 
@@ -37,6 +38,15 @@
 	let toonArchief = $state(false);
 	let bezigGenereren = $state(false);
 	let genereerFout = $state<string | null>(null);
+
+	// Uitgeklapte onderbouwing-rijen (per concept-id).
+	let uitgeklapt = $state<Set<string>>(new Set());
+	function toggleOnderbouwing(id: string) {
+		const next = new Set(uitgeklapt);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		uitgeklapt = next;
+	}
 
 	// svelte-ignore state_referenced_locally
 	let testplan = $state<Testplan | null>((data.client.testplan as Testplan | null) ?? null);
@@ -303,6 +313,20 @@
 							<td class="p-2">{@render selectCel(c, 'status', CONCEPT_STATUSSEN, false)}</td>
 							<td class="p-2">
 								<div class="flex justify-end gap-1">
+									{#if c.onderbouwing}
+										<Button
+											variant="ghost"
+											size="sm"
+											title="Waarom dit concept?"
+											class={cn(
+												'text-muted-foreground',
+												uitgeklapt.has(c.id) && 'text-brand-green'
+											)}
+											onclick={() => toggleOnderbouwing(c.id)}
+										>
+											<Info class="size-4" />
+										</Button>
+									{/if}
 									<Button
 										variant="ghost"
 										size="sm"
@@ -324,6 +348,16 @@
 								</div>
 							</td>
 						</tr>
+						{#if uitgeklapt.has(c.id) && c.onderbouwing}
+							<tr class="border-b bg-brand-mint/30">
+								<td colspan="10" class="px-3 py-2">
+									<p class="text-sm">
+										<span class="font-semibold text-brand-green">Waarom dit concept:</span>
+										{c.onderbouwing}
+									</p>
+								</td>
+							</tr>
+						{/if}
 					{/each}
 				</tbody>
 			</table>
