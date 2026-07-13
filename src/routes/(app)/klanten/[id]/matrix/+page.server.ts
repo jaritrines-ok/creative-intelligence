@@ -8,7 +8,7 @@ export const load: PageServerLoad = async ({ params, locals: { supabase } }) => 
 		supabase.from('concepts').select('*').eq('client_id', id).order('created_at', { ascending: true }),
 		supabase
 			.from('trigger_map_versions')
-			.select('invalshoeken')
+			.select('id, invalshoeken')
 			.eq('client_id', id)
 			.eq('is_actief', true)
 			.maybeSingle()
@@ -17,6 +17,7 @@ export const load: PageServerLoad = async ({ params, locals: { supabase } }) => 
 	return {
 		concepten: concepten.data ?? [],
 		invalshoeken: (tm.data?.invalshoeken as Invalshoek[] | null) ?? [],
+		versieId: tm.data?.id ?? null,
 		heeftTriggerMap: !!tm.data
 	};
 };

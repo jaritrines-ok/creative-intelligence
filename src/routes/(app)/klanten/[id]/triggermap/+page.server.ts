@@ -1,9 +1,11 @@
 import { fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { bouwIntakeTekst, genereerTriggerMap } from '$lib/server/trigger-map-generator';
+import { genereerInvalshoekScores } from '$lib/server/scoring-ai';
 import { CLAUDE_MODEL } from '$lib/server/claude';
 import { BRON1_DREMPEL } from '$lib/intake-vragen';
 import { heeftInhoud } from '$lib/progress';
+import type { Invalshoek } from '$lib/trigger-map';
 import type { Json } from '$lib/supabase/database.types';
 
 // AI-generatie met adaptive thinking duurt langer; ruimere Vercel-functietimeout.
@@ -98,21 +100,97 @@ export const actions: Actions = {
 				.eq('client_id', id)
 				.eq('is_actief', true);
 
-			const { error: insErr } = await supabase.from('trigger_map_versions').insert({
-				client_id: id,
-				versie_nummer: volgende,
-				is_actief: true,
-				pijnpunten: res.data.pijnpunten,
-				wensen: res.data.wensen,
-				bezwaren: res.data.bezwaren,
-				taal_doelgroep: res.data.taal_doelgroep,
-				routines: res.data.routines,
-				kansen_vs_concurrenten: res.data.kansen_vs_concurrenten,
-				personas: (res.data.personas ?? []) as unknown as Json,
-				invalshoeken: res.data.invalshoeken as unknown as Json,
-				gegenereerd_door: user!.id
-			});
-			if (insErr) return fail(500, { foutmelding: 'Opslaan mislukt: ' + insErr.message });
+			const { data: nieuweVersie, error: insErr } = await supabase
+				.from('trigger_map_versions')
+				.insert({
+					client_id: id,
+					versie_nummer: volgende,
+					is_actief: true,
+					pijnpunten: res.data.pijnpunten,
+					wensen: res.data.wensen,
+					bezwaren: res.data.bezwaren,
+					taal_doelgroep: res.data.taal_doelgroep,
+					routines: res.data.routines,
+					kansen_vs_concurrenten: res.data.kansen_vs_concurrenten,
+					personas: (res.data.personas ?? []) as unknown as Json,
+					invalshoeken: res.data.invalshoeken as unknown as Json,
+					gegenereerd_door: user!.id
+				})
+				.select('id')
+				.single();
+			if (insErr || !nieuweVersie) {
+				return fail(500, { foutmelding: 'Opslaan mislukt: ' + (insErr?.message ?? '') });
+			}
+
+			// Invalshoeken meteen automatisch scoren (RICE-light) zodat de test-backlog in de
+			// matrix direct geprioriteerd is. Best-effort: de trigger map is hierboven al
+			// opgeslagen, dus als dit mislukt of te lang duurt, blijven de invalshoeken gewoon
+			// (ongescoord) staan en kan de strateeg ze later vanuit de matrix laten scoren.
+			try {
+				const teScoren = (res.data.invalshoeken as Invalshoek[]).filter((i) => !i.gearchiveerd);
+				if (teScoren.length) {
+					const scoreRes = await genereerInvalshoekScores({
+						invalshoeken: teScoren.map((i) => ({
+							naam: i.naam,
+							omschrijving: i.omschrijving,
+							onderbouwing: i.onderbouwing,
+							funnelfase: i.funnelfase
+						})),
+						personas: res.data.personas ?? [],
+						pijnpunten: res.data.pijnpunten,
+						wensen: res.data.wensen,
+						bezwaren: res.data.bezwaren,
+						kansen_vs_concurrenten: res.data.kansen_vs_concurrenten
+					});
+
+					await supabase.from('ai_logs').insert({
+						client_id: id,
+						gebruiker_id: user!.id,
+						module: 'scorekaart',
+						model: scoreRes.model,
+						prompt: scoreRes.prompt,
+						response: scoreRes.response,
+						tokens_input: scoreRes.tokensInput,
+						tokens_output: scoreRes.tokensOutput,
+						duur_ms: scoreRes.duurMs
+					});
+
+					// Scores koppelen op genormaliseerde naam (strip [FASE]-prefix, case/spaties).
+					const norm = (v: unknown) =>
+						String(v ?? '')
+							.replace(/^\s*\[[^\]]*\]\s*/, '')
+							.trim()
+							.toLowerCase();
+					const perNaam = new Map(scoreRes.data.scores.map((s) => [norm(s.naam), s]));
+					const gescoord = (res.data.invalshoeken as Invalshoek[]).map((i) => {
+						const s = perNaam.get(norm(i.naam));
+						return s
+							? {
+									...i,
+									score: {
+										bereik: s.bereik,
+										impact: s.impact,
+										bewijskracht: s.bewijskracht,
+										effort: s.effort,
+										toelichting: s.toelichting
+									}
+								}
+							: i;
+					});
+					await supabase
+						.from('trigger_map_versions')
+						.update({ invalshoeken: gescoord as unknown as Json })
+						.eq('id', nieuweVersie.id);
+				}
+			} catch (e) {
+				await supabase.from('ai_logs').insert({
+					client_id: id,
+					gebruiker_id: user!.id,
+					module: 'scorekaart',
+					model: CLAUDE_MODEL,
+					response: 'FOUT (auto-score bij generatie): ' + (e instanceof Error ? e.message : 'onbekend')
+				});
+			}
 
 			// Fase laten oplichten in de Creative Loop.
 			const { data: client } = await supabase

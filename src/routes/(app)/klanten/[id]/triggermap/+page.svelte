@@ -5,24 +5,9 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Card from '$lib/components/ui/card';
-	import {
-		TRIGGER_MAP_SECTIES,
-		FUNNELFASES,
-		INVALSHOEK_STATUSSEN,
-		SCORE_NIVEAUS,
-		SCORE_FACTOREN,
-		invalshoekStatus,
-		afgeleidePrioriteit,
-		type Invalshoek,
-		type InvalshoekScore,
-		type ScoreNiveau,
-		type Persona,
-		type Funnelfase,
-		type TekstSectieKey
-	} from '$lib/trigger-map';
+	import { TRIGGER_MAP_SECTIES, type Persona, type TekstSectieKey } from '$lib/trigger-map';
 	import { saver, postJSON } from '$lib/saver.svelte';
 	import { datumKort } from '$lib/format';
-	import { cn } from '$lib/utils';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
@@ -30,8 +15,7 @@
 	import Check from '@lucide/svelte/icons/check';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import Archive from '@lucide/svelte/icons/archive';
-	import ArchiveRestore from '@lucide/svelte/icons/archive-restore';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 
 	let { data, form } = $props();
 	let bezig = $state(false);
@@ -48,7 +32,6 @@
 		routines: string[];
 		kansen_vs_concurrenten: string[];
 		personas: Persona[];
-		invalshoeken: Invalshoek[];
 	}
 
 	function mapVersies(rows: typeof data.versies): VersieUI[] {
@@ -63,8 +46,7 @@
 			taal_doelgroep: (v.taal_doelgroep as string[] | null) ?? [],
 			routines: (v.routines as string[] | null) ?? [],
 			kansen_vs_concurrenten: (v.kansen_vs_concurrenten as string[] | null) ?? [],
-			personas: ((v as { personas?: Persona[] | null }).personas as Persona[] | null) ?? [],
-			invalshoeken: (v.invalshoeken as Invalshoek[] | null) ?? []
+			personas: ((v as { personas?: Persona[] | null }).personas as Persona[] | null) ?? []
 		}));
 	}
 
@@ -83,37 +65,6 @@
 
 	let geselecteerd = $derived(versies.find((v) => v.id === geselecteerdId) ?? null);
 	let bewerkbaar = $derived(!!geselecteerd?.is_actief);
-	let toonGearchiveerd = $state(false);
-
-	// Invalshoeken gegroepeerd per funnelfase; behoudt referentie naar het originele object voor binding.
-	let invalshoekenPerFase = $derived(
-		FUNNELFASES.map((fase) => ({
-			fase,
-			items: (geselecteerd?.invalshoeken ?? []).filter(
-				(inv) => inv.funnelfase === fase && (toonGearchiveerd || !inv.gearchiveerd)
-			)
-		}))
-	);
-	let aantalGearchiveerd = $derived(
-		(geselecteerd?.invalshoeken ?? []).filter((inv) => inv.gearchiveerd).length
-	);
-
-	const funnelKleur: Record<string, string> = {
-		TOFU: 'border-blue-300 bg-blue-100 text-blue-800',
-		MOFU: 'border-amber-300 bg-amber-100 text-amber-800',
-		BOFU: 'border-brand-lime/50 bg-brand-lime/20 text-brand-green'
-	};
-	const statusKleur: Record<string, string> = {
-		Nieuw: 'border-border bg-muted text-muted-foreground',
-		'In test': 'border-amber-300 bg-amber-100 text-amber-800',
-		'Getest — werkt': 'border-brand-lime/50 bg-brand-lime/20 text-brand-green',
-		'Getest — werkt niet': 'border-red-300 bg-red-100 text-red-700'
-	};
-	const prioriteitKleur: Record<string, string> = {
-		Hoog: 'border-brand-lime/50 bg-brand-lime/20 text-brand-green',
-		Middel: 'border-amber-300 bg-amber-100 text-amber-800',
-		Laag: 'border-border bg-muted text-muted-foreground'
-	};
 
 	function saveSectie(key: TekstSectieKey) {
 		if (!geselecteerd) return;
@@ -122,14 +73,6 @@
 			versieId: geselecteerd.id,
 			key,
 			items: geselecteerd[key]
-		});
-	}
-	function saveInvalshoeken() {
-		if (!geselecteerd) return;
-		return postJSON('/api/trigger-map', {
-			type: 'invalshoeken',
-			versieId: geselecteerd.id,
-			invalshoeken: geselecteerd.invalshoeken
 		});
 	}
 	function savePersonas() {
@@ -156,59 +99,6 @@
 		geselecteerd?.[key].splice(i, 1);
 		saveSectie(key);
 	}
-	function invalshoekToevoegen(fase: Funnelfase) {
-		geselecteerd?.invalshoeken.push({
-			naam: '',
-			omschrijving: '',
-			funnelfase: fase,
-			onderbouwing: '',
-			status: 'Nieuw',
-			gearchiveerd: false
-		});
-	}
-	function invalshoekVerwijderen(inv: Invalshoek) {
-		if (!geselecteerd) return;
-		const i = geselecteerd.invalshoeken.indexOf(inv);
-		if (i >= 0) geselecteerd.invalshoeken.splice(i, 1);
-		saveInvalshoeken();
-	}
-	function invalshoekArchiveer(inv: Invalshoek, waarde: boolean) {
-		inv.gearchiveerd = waarde;
-		saveInvalshoeken();
-	}
-
-	// ---- RICE-light scorekaart ----
-	const DEFAULT_SCORE: InvalshoekScore = {
-		bereik: 'Middel',
-		impact: 'Middel',
-		bewijskracht: 'Middel',
-		effort: 'Middel'
-	};
-	let bezigScores = $state(false);
-	let scoresFout = $state<string | null>(null);
-
-	function setScore(inv: Invalshoek, factor: keyof InvalshoekScore, waarde: ScoreNiveau) {
-		inv.score = { ...(inv.score ?? DEFAULT_SCORE), [factor]: waarde };
-		saveInvalshoeken();
-	}
-
-	async function scoresVoorstellen() {
-		if (!geselecteerd) return;
-		bezigScores = true;
-		scoresFout = null;
-		try {
-			const { invalshoeken } = await postJSON<{ invalshoeken: Invalshoek[] }>('/api/trigger-map', {
-				type: 'scores',
-				clientId: data.client.id,
-				versieId: geselecteerd.id
-			});
-			geselecteerd.invalshoeken = invalshoeken;
-		} catch (e) {
-			scoresFout = e instanceof Error ? e.message : 'Scores voorstellen mislukt';
-		} finally {
-			bezigScores = false;
-		}
-	}
 	async function activeer(id: string) {
 		await postJSON('/api/trigger-map', {
 			type: 'activeer',
@@ -226,12 +116,10 @@
 		<div>
 			<h2 class="text-lg font-semibold">Trigger map</h2>
 			<p class="text-sm text-muted-foreground">
+				Het volledige klantbeeld uit de intake: pijnpunten, wensen, taal en persona's.
 				{#if versies.length}
-					{versies.length}
-					{versies.length === 1 ? 'versie' : 'versies'} · bewerk de actieve versie of maak een oudere
-					weer actief.
-				{:else}
-					Nog geen trigger map gegenereerd.
+					· {versies.length}
+					{versies.length === 1 ? 'versie' : 'versies'}.
 				{/if}
 			</p>
 		</div>
@@ -304,7 +192,10 @@
 		>
 			<LoaderCircle class="size-6 animate-spin text-primary" />
 			<p class="text-sm font-medium">Claude analyseert de intake…</p>
-			<p class="text-xs text-muted-foreground">Dit kan een halve minuut duren.</p>
+			<p class="text-xs text-muted-foreground">
+				De trigger map wordt opgesteld en de invalshoeken meteen geprioriteerd. Dit kan een minuut
+				duren.
+			</p>
 		</div>
 	{:else if geselecteerd}
 		<!-- Versie-selector + status -->
@@ -440,226 +331,27 @@
 			{/if}
 		</div>
 
-		<!-- Invalshoeken per funnelfase -->
-		<div class="space-y-5">
-			<div class="flex flex-wrap items-center justify-between gap-2">
-				<div>
-					<h3 class="text-base font-semibold">Invalshoeken per funnelfase</h3>
-					<p class="text-sm text-muted-foreground">
-						Deze test je als eerste. De scorekaart (Bereik · Impact · Bewijskracht · Effort) bepaalt de
-						prioriteit die de matrix overneemt.
-					</p>
-				</div>
-				<div class="flex items-center gap-3">
-					{#if aantalGearchiveerd > 0}
-						<button
-							type="button"
-							class="text-sm font-medium text-muted-foreground hover:text-foreground"
-							onclick={() => (toonGearchiveerd = !toonGearchiveerd)}
-						>
-							{toonGearchiveerd ? 'Verberg' : 'Toon'} gearchiveerd ({aantalGearchiveerd})
-						</button>
-					{/if}
-					{#if bewerkbaar}
-						<Button variant="outline" size="sm" onclick={scoresVoorstellen} disabled={bezigScores}>
-							{#if bezigScores}
-								<LoaderCircle class="size-4 animate-spin" />
-								Scoren…
-							{:else}
-								<Sparkles class="size-4" />
-								Scores voorstellen
-							{/if}
-						</Button>
-					{/if}
-				</div>
-			</div>
-
-			{#if scoresFout}
-				<div class="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-					<TriangleAlert class="size-4 shrink-0" />
-					{scoresFout}
-				</div>
-			{/if}
-
-			{#each invalshoekenPerFase as groep (groep.fase)}
-				<div class="space-y-3">
-					<div class="flex items-center gap-2">
-						<Badge variant="outline" class={cn('font-medium', funnelKleur[groep.fase])}>
-							{groep.fase}
-						</Badge>
-						<span class="text-xs text-muted-foreground">
-							{groep.items.length}
-							{groep.items.length === 1 ? 'invalshoek' : 'invalshoeken'}
-						</span>
-						{#if bewerkbaar}
-							<Button
-								variant="ghost"
-								size="sm"
-								class="ml-auto text-muted-foreground"
-								onclick={() => invalshoekToevoegen(groep.fase)}
-							>
-								<Plus class="size-4" />
-								Toevoegen
-							</Button>
-						{/if}
-					</div>
-
-					{#if groep.items.length === 0}
-						<p class="rounded-md border border-dashed bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-							Nog geen invalshoeken voor {groep.fase}.
-						</p>
-					{:else}
-						<div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
-							{#each groep.items as inv (inv)}
-								<Card.Root class={cn(inv.gearchiveerd && 'opacity-60')}>
-									{#if bewerkbaar}
-										<Card.Content class="space-y-3 pt-6">
-											<div class="flex items-center gap-2">
-												<Input bind:value={inv.naam} onblur={saveInvalshoeken} placeholder="Naam invalshoek" />
-												<Button
-													variant="ghost"
-													size="sm"
-													class="shrink-0 text-muted-foreground hover:text-destructive"
-													title="Verwijderen"
-													onclick={() => invalshoekVerwijderen(inv)}
-												>
-													<Trash2 class="size-4" />
-												</Button>
-											</div>
-											<div class="grid grid-cols-2 gap-2">
-												<div>
-													<span class="mb-1 block text-xs font-medium text-muted-foreground">Fase</span>
-													<select
-														bind:value={inv.funnelfase}
-														onchange={saveInvalshoeken}
-														class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
-													>
-														{#each FUNNELFASES as f (f)}<option value={f}>{f}</option>{/each}
-													</select>
-												</div>
-												<div>
-													<span class="mb-1 block text-xs font-medium text-muted-foreground">Status</span>
-													<select
-														value={invalshoekStatus(inv)}
-														onchange={(e) => {
-															inv.status = e.currentTarget.value as Invalshoek['status'];
-															saveInvalshoeken();
-														}}
-														class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
-													>
-														{#each INVALSHOEK_STATUSSEN as s (s)}<option value={s}>{s}</option>{/each}
-													</select>
-												</div>
-											</div>
-											<div>
-												<span class="mb-1 block text-xs font-medium text-muted-foreground">Omschrijving</span>
-												<Textarea bind:value={inv.omschrijving} onblur={saveInvalshoeken} rows={3} />
-											</div>
-											<div>
-												<span class="mb-1 block text-xs font-medium text-muted-foreground">Onderbouwing</span>
-												<Textarea bind:value={inv.onderbouwing} onblur={saveInvalshoeken} rows={2} />
-											</div>
-
-											<!-- RICE-light scorekaart -->
-											<div class="space-y-2 rounded-md border border-dashed bg-muted/20 p-2.5">
-												<div class="flex items-center justify-between gap-2">
-													<span class="text-xs font-semibold text-muted-foreground">Scorekaart</span>
-													{#if inv.score}
-														<Badge
-															variant="outline"
-															class={cn('font-medium', prioriteitKleur[afgeleidePrioriteit(inv.score)])}
-														>
-															Prioriteit: {afgeleidePrioriteit(inv.score)}
-														</Badge>
-													{:else}
-														<span class="text-xs text-muted-foreground">nog niet gescoord</span>
-													{/if}
-												</div>
-												<div class="grid grid-cols-2 gap-2">
-													{#each SCORE_FACTOREN as f (f.key)}
-														<div>
-															<span class="mb-0.5 block text-xs text-muted-foreground" title={f.hint}>{f.label}</span>
-															<select
-																value={inv.score?.[f.key] ?? ''}
-																onchange={(e) => setScore(inv, f.key, e.currentTarget.value as ScoreNiveau)}
-																class="h-8 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
-															>
-																<option value="" disabled>—</option>
-																{#each SCORE_NIVEAUS as n (n)}<option value={n}>{n}</option>{/each}
-															</select>
-														</div>
-													{/each}
-												</div>
-												{#if inv.score?.toelichting}
-													<p class="text-xs text-muted-foreground">{inv.score.toelichting}</p>
-												{/if}
-											</div>
-
-											<Button
-												variant="ghost"
-												size="sm"
-												class="text-muted-foreground"
-												onclick={() => invalshoekArchiveer(inv, !inv.gearchiveerd)}
-											>
-												{#if inv.gearchiveerd}
-													<ArchiveRestore class="size-4" /> Herstellen
-												{:else}
-													<Archive class="size-4" /> Archiveren
-												{/if}
-											</Button>
-										</Card.Content>
-									{:else}
-										<Card.Header>
-											<div class="flex flex-wrap items-center justify-between gap-2">
-												<Card.Title class="text-base">{inv.naam}</Card.Title>
-												<Badge
-													variant="outline"
-													class={cn('shrink-0 font-medium', statusKleur[invalshoekStatus(inv)])}
-												>
-													{invalshoekStatus(inv)}
-												</Badge>
-											</div>
-										</Card.Header>
-										<Card.Content class="space-y-3 text-sm">
-											<p>{inv.omschrijving}</p>
-											<div>
-												<p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-													Onderbouwing
-												</p>
-												<p class="mt-0.5 text-muted-foreground">{inv.onderbouwing}</p>
-											</div>
-											{#if inv.score}
-												<div class="flex flex-wrap items-center gap-2">
-													<Badge
-														variant="outline"
-														class={cn('font-medium', prioriteitKleur[afgeleidePrioriteit(inv.score)])}
-													>
-														Prioriteit: {afgeleidePrioriteit(inv.score)}
-													</Badge>
-													<span class="text-xs text-muted-foreground">
-														Bereik {inv.score.bereik} · Impact {inv.score.impact} · Bewijskracht {inv.score.bewijskracht}
-														· Effort {inv.score.effort}
-													</span>
-												</div>
-												{#if inv.score.toelichting}
-													<p class="text-xs text-muted-foreground">{inv.score.toelichting}</p>
-												{/if}
-											{/if}
-										</Card.Content>
-									{/if}
-								</Card.Root>
-							{/each}
-						</div>
-					{/if}
-				</div>
-			{/each}
-		</div>
+		<!-- Doorverwijzing naar de test-backlog -->
+		<a
+			href="/klanten/{data.client.id}/matrix"
+			class="flex items-center justify-between gap-3 rounded-lg border border-brand-lime/40 bg-brand-mint/40 px-4 py-3 text-sm transition-colors hover:bg-brand-mint/60"
+		>
+			<span>
+				<span class="font-medium text-brand-green">Invalshoeken staan in de matrix.</span>
+				<span class="text-muted-foreground">
+					Op basis van deze trigger map zijn de invalshoeken automatisch geprioriteerd (RICE) als
+					test-backlog — daar bepaal je de tests.
+				</span>
+			</span>
+			<ArrowRight class="size-4 shrink-0 text-brand-green" />
+		</a>
 	{:else}
 		<div class="rounded-lg border border-dashed bg-muted/30 p-10 text-center">
 			<p class="text-sm font-medium text-foreground">Nog geen trigger map</p>
 			<p class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-				Genereer een trigger map op basis van de intake. Claude analyseert alle beschikbare bronnen
-				en stelt pijnpunten, wensen, taal van de doelgroep en invalshoeken per funnelfase voor.
+				Genereer een trigger map op basis van de intake. Claude analyseert alle beschikbare bronnen en
+				stelt pijnpunten, wensen, bezwaren, taal van de doelgroep, kansen en persona's voor. De
+				invalshoeken verschijnen — automatisch geprioriteerd — als test-backlog in de matrix.
 			</p>
 		</div>
 	{/if}

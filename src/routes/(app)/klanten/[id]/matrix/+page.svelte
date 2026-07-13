@@ -5,7 +5,17 @@
 	import { saver, postJSON } from '$lib/saver.svelte';
 	import { cn } from '$lib/utils';
 	import type { Concept } from '$lib/supabase/database.types';
-	import { afgeleidePrioriteit } from '$lib/trigger-map';
+	import {
+		afgeleidePrioriteit,
+		riceScore,
+		invalshoekStatus,
+		INVALSHOEK_STATUSSEN,
+		SCORE_NIVEAUS,
+		SCORE_FACTOREN,
+		type Invalshoek,
+		type InvalshoekScore,
+		type ScoreNiveau
+	} from '$lib/trigger-map';
 	import {
 		FUNNELFASES,
 		FORMATS,
@@ -18,6 +28,7 @@
 	} from '$lib/matrix';
 	import type { Testplan } from '$lib/testplan';
 	import { SPRINT_VELDEN } from '$lib/testplan';
+	import { Input } from '$lib/components/ui/input';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Archive from '@lucide/svelte/icons/archive';
@@ -28,6 +39,9 @@
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import ClipboardList from '@lucide/svelte/icons/clipboard-list';
 	import Info from '@lucide/svelte/icons/info';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ListOrdered from '@lucide/svelte/icons/list-ordered';
 
 	let { data } = $props();
 
@@ -78,6 +92,39 @@
 
 	const veldClass =
 		'h-8 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none';
+	// Zelfde stijl, maar meegroeiend en met tekst-ombreking (geen h-8, geen resize-handle).
+	const veldClassTa =
+		'w-full resize-none rounded-md border border-input bg-background px-2 py-1.5 text-sm leading-snug focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none';
+
+	/**
+	 * Meegroeiend tekstveld dat compact blijft (max. hoogte, dan intern scrollen) zolang het geen
+	 * focus heeft, en volledig uitklapt zodra je erin klikt — zo blijft de matrix scanbaar én zie je
+	 * alle tekst bij bewerken.
+	 */
+	function autogrow(node: HTMLTextAreaElement, max = 96) {
+		const resize = () => {
+			const focused = document.activeElement === node;
+			node.style.height = 'auto';
+			const vol = node.scrollHeight;
+			node.style.height = `${focused ? vol : Math.min(vol, max)}px`;
+			node.style.overflowY = !focused && vol > max ? 'auto' : 'hidden';
+		};
+		resize();
+		node.addEventListener('input', resize);
+		node.addEventListener('focus', resize);
+		node.addEventListener('blur', resize);
+		return {
+			update(nieuwMax: number) {
+				max = nieuwMax;
+				resize();
+			},
+			destroy() {
+				node.removeEventListener('input', resize);
+				node.removeEventListener('focus', resize);
+				node.removeEventListener('blur', resize);
+			}
+		};
+	}
 
 	function saveVeld(c: Concept, veld: keyof Concept) {
 		return postJSON('/api/concepts', { type: 'update', id: c.id, patch: { [veld]: c[veld] } });
@@ -104,7 +151,114 @@
 		await postJSON('/api/concepts', { type: 'herstel', id: c.id });
 		c.gearchiveerd = false;
 	}
-	let overneembareInvalshoeken = $derived(data.invalshoeken.filter((inv) => !inv.gearchiveerd));
+	// ---- Test-backlog (invalshoeken uit de actieve trigger map) ----
+	// svelte-ignore state_referenced_locally
+	let invalshoeken = $state<Invalshoek[]>(data.invalshoeken.map((i) => ({ ...i })));
+	$effect(() => {
+		invalshoeken = data.invalshoeken.map((i) => ({ ...i }));
+	});
+	let versieId = $derived(data.versieId);
+
+	// Geprioriteerde backlog op RICE-score (hoog→laag); ongescoorde onderaan.
+	let backlog = $derived(
+		invalshoeken
+			.filter((i) => !i.gearchiveerd)
+			.map((inv, idx) => ({ inv, idx }))
+			.sort((a, b) => {
+				const ra = a.inv.score ? riceScore(a.inv.score) : -1;
+				const rb = b.inv.score ? riceScore(b.inv.score) : -1;
+				if (rb !== ra) return rb - ra;
+				return a.idx - b.idx;
+			})
+			.map((x) => x.inv)
+	);
+	let backlogArchief = $derived(invalshoeken.filter((i) => i.gearchiveerd));
+	let overneembareInvalshoeken = $derived(invalshoeken.filter((inv) => !inv.gearchiveerd));
+
+	let uitgeklapteInv = $state<Set<Invalshoek>>(new Set());
+	function toggleInv(inv: Invalshoek) {
+		const next = new Set(uitgeklapteInv);
+		if (next.has(inv)) next.delete(inv);
+		else next.add(inv);
+		uitgeklapteInv = next;
+	}
+	let toonBacklogArchief = $state(false);
+	// Backlog standaard ingeklapt zodra er al concepten zijn (dan zie je meteen de matrix),
+	// open wanneer je nog moet beginnen.
+	// svelte-ignore state_referenced_locally
+	let backlogOpen = $state(data.concepten.filter((c) => !c.gearchiveerd).length === 0);
+
+	const DEFAULT_SCORE: InvalshoekScore = {
+		bereik: 'Middel',
+		impact: 'Middel',
+		bewijskracht: 'Middel',
+		effort: 'Middel'
+	};
+	let bezigScores = $state(false);
+	let scoresFout = $state<string | null>(null);
+
+	function saveInvalshoeken() {
+		if (!versieId) return;
+		return postJSON('/api/trigger-map', { type: 'invalshoeken', versieId, invalshoeken });
+	}
+	function setInvScore(inv: Invalshoek, factor: keyof InvalshoekScore, waarde: ScoreNiveau) {
+		inv.score = { ...(inv.score ?? DEFAULT_SCORE), [factor]: waarde };
+		saveInvalshoeken();
+	}
+	function invToevoegen() {
+		const inv: Invalshoek = {
+			naam: '',
+			omschrijving: '',
+			funnelfase: 'TOFU',
+			onderbouwing: '',
+			status: 'Nieuw',
+			gearchiveerd: false
+		};
+		invalshoeken.push(inv);
+		toggleInv(inv);
+	}
+	function invVerwijderen(inv: Invalshoek) {
+		const i = invalshoeken.indexOf(inv);
+		if (i >= 0) invalshoeken.splice(i, 1);
+		saveInvalshoeken();
+	}
+	function invArchiveer(inv: Invalshoek, waarde: boolean) {
+		inv.gearchiveerd = waarde;
+		saveInvalshoeken();
+	}
+	async function scoresVoorstellen() {
+		if (!versieId) return;
+		bezigScores = true;
+		scoresFout = null;
+		try {
+			const { invalshoeken: nw } = await postJSON<{ invalshoeken: Invalshoek[] }>(
+				'/api/trigger-map',
+				{ type: 'scores', clientId: data.client.id, versieId }
+			);
+			invalshoeken = nw.map((i) => ({ ...i }));
+		} catch (e) {
+			scoresFout = e instanceof Error ? e.message : 'Scores voorstellen mislukt';
+		} finally {
+			bezigScores = false;
+		}
+	}
+
+	const funnelKleur: Record<string, string> = {
+		TOFU: 'border-blue-300 bg-blue-100 text-blue-800',
+		MOFU: 'border-amber-300 bg-amber-100 text-amber-800',
+		BOFU: 'border-brand-lime/50 bg-brand-lime/20 text-brand-green'
+	};
+	const invStatusKleur: Record<string, string> = {
+		Nieuw: 'border-border bg-muted text-muted-foreground',
+		'In test': 'border-amber-300 bg-amber-100 text-amber-800',
+		'Getest — werkt': 'border-brand-lime/50 bg-brand-lime/20 text-brand-green',
+		'Getest — werkt niet': 'border-red-300 bg-red-100 text-red-700'
+	};
+	const prioriteitKleur: Record<string, string> = {
+		Hoog: 'border-brand-lime/50 bg-brand-lime/20 text-brand-green',
+		Middel: 'border-amber-300 bg-amber-100 text-amber-800',
+		Laag: 'border-border bg-muted text-muted-foreground'
+	};
 
 	async function neemInvalshoekenOver() {
 		for (const inv of overneembareInvalshoeken) {
@@ -169,6 +323,18 @@
 		{placeholder}
 		class={veldClass}
 	/>
+{/snippet}
+
+<!-- Meegroeiend tekstveld voor lange waarden (invalshoek, hypothese) — tekst breekt om -->
+{#snippet textareaCel(c: Concept, veld: keyof Concept, placeholder: string, max: number)}
+	<textarea
+		bind:value={c[veld]}
+		onblur={() => saveVeld(c, veld)}
+		{placeholder}
+		rows="1"
+		use:autogrow={max}
+		class={veldClassTa}
+	></textarea>
 {/snippet}
 
 <!-- Combobox: kies een suggestie of typ een eigen waarde -->
@@ -237,6 +403,240 @@
 			<TriangleAlert class="size-4 shrink-0" />
 			{genereerFout}
 		</div>
+	{/if}
+
+	<!-- Test-backlog: geprioriteerde invalshoeken uit de trigger map (inklapbaar) -->
+	{#if data.heeftTriggerMap}
+		<section class="rounded-lg border">
+			<button
+				type="button"
+				class="flex w-full items-center gap-2 p-4 text-left"
+				onclick={() => (backlogOpen = !backlogOpen)}
+			>
+				<ListOrdered class="size-4 shrink-0 text-brand-green" />
+				<span class="text-base font-semibold">Test-backlog</span>
+				<Badge variant="outline" class="text-muted-foreground">{backlog.length}</Badge>
+				{#if !backlogOpen && backlog[0]}
+					<span class="truncate text-sm text-muted-foreground">
+						· volgende: {backlog[0].naam || '(naamloos)'}
+					</span>
+				{/if}
+				<ChevronDown
+					class={cn(
+						'ml-auto size-4 shrink-0 text-muted-foreground transition-transform',
+						backlogOpen && 'rotate-180'
+					)}
+				/>
+			</button>
+
+			{#if backlogOpen}
+				<div class="space-y-3 border-t p-4 pt-3">
+					<div class="flex flex-wrap items-start justify-between gap-3">
+						<p class="max-w-xl text-sm text-muted-foreground">
+							Invalshoeken uit je trigger map, automatisch geprioriteerd (RICE-light: Bereik · Impact ·
+							Bewijskracht ÷ Effort). De bovenste test je als eerste.
+						</p>
+						<div class="flex items-center gap-2">
+							<Button variant="outline" size="sm" onclick={scoresVoorstellen} disabled={bezigScores || !versieId}>
+								{#if bezigScores}
+									<LoaderCircle class="size-4 animate-spin" /> Scoren…
+								{:else}
+									<Sparkles class="size-4" /> Scores opnieuw voorstellen
+								{/if}
+							</Button>
+							<Button variant="ghost" size="sm" onclick={invToevoegen} disabled={!versieId}>
+								<Plus class="size-4" /> Invalshoek
+							</Button>
+						</div>
+					</div>
+
+					{#if scoresFout}
+				<div class="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+					<TriangleAlert class="size-4 shrink-0" />
+					{scoresFout}
+				</div>
+			{/if}
+
+			{#if backlog.length === 0}
+				<p class="rounded-md border border-dashed bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
+					Nog geen invalshoeken. Ze worden bij het genereren van de trigger map opgesteld en
+					geprioriteerd — of voeg er handmatig één toe.
+				</p>
+			{:else}
+				<ol class="space-y-2">
+					{#each backlog as inv, i (inv)}
+						{@const open = uitgeklapteInv.has(inv)}
+						<li class="rounded-md border">
+							<!-- Samenvattingsrij -->
+							<div class="flex flex-wrap items-center gap-2 p-2.5">
+								<span
+									class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground"
+								>
+									{i + 1}
+								</span>
+								{#if inv.score}
+									<Badge variant="outline" class={cn('font-medium', prioriteitKleur[afgeleidePrioriteit(inv.score)])}>
+										{afgeleidePrioriteit(inv.score)}
+									</Badge>
+								{:else}
+									<Badge variant="outline" class="text-muted-foreground">niet gescoord</Badge>
+								{/if}
+								<Badge variant="outline" class={cn('font-medium', funnelKleur[inv.funnelfase])}>
+									{inv.funnelfase}
+								</Badge>
+								<span class="font-medium">{inv.naam || '(naamloos)'}</span>
+								<Badge
+									variant="outline"
+									class={cn('ml-auto font-medium', invStatusKleur[invalshoekStatus(inv)])}
+								>
+									{invalshoekStatus(inv)}
+								</Badge>
+								<Button variant="ghost" size="sm" class="text-muted-foreground" onclick={() => toggleInv(inv)}>
+									Bijstellen
+									<ChevronDown class={cn('size-4 transition-transform', open && 'rotate-180')} />
+								</Button>
+							</div>
+
+							<!-- Score-detail (samengevat, wanneer ingeklapt) -->
+							{#if !open}
+								<div class="border-t px-2.5 py-2 text-xs text-muted-foreground">
+									{#if inv.score}
+										<span class="text-foreground">
+											Bereik {inv.score.bereik} · Impact {inv.score.impact} · Bewijskracht {inv.score
+												.bewijskracht} · Effort {inv.score.effort}
+										</span>
+										{#if inv.score.toelichting}<span> — {inv.score.toelichting}</span>{/if}
+									{:else if inv.omschrijving}
+										{inv.omschrijving}
+									{/if}
+								</div>
+							{/if}
+
+							<!-- Bijstellen (uitgeklapt) -->
+							{#if open}
+								<div class="space-y-3 border-t bg-muted/20 p-3">
+									<div class="flex items-center gap-2">
+										<Input bind:value={inv.naam} onblur={saveInvalshoeken} placeholder="Naam invalshoek" />
+										<Button
+											variant="ghost"
+											size="sm"
+											class="shrink-0 text-muted-foreground hover:text-destructive"
+											title="Verwijderen"
+											onclick={() => invVerwijderen(inv)}
+										>
+											<Trash2 class="size-4" />
+										</Button>
+									</div>
+									<div class="grid grid-cols-2 gap-2">
+										<div>
+											<span class="mb-1 block text-xs font-medium text-muted-foreground">Fase</span>
+											<select bind:value={inv.funnelfase} onchange={saveInvalshoeken} class={veldClass}>
+												{#each FUNNELFASES as f (f)}<option value={f}>{f}</option>{/each}
+											</select>
+										</div>
+										<div>
+											<span class="mb-1 block text-xs font-medium text-muted-foreground">Status</span>
+											<select
+												value={invalshoekStatus(inv)}
+												onchange={(e) => {
+													inv.status = e.currentTarget.value as Invalshoek['status'];
+													saveInvalshoeken();
+												}}
+												class={veldClass}
+											>
+												{#each INVALSHOEK_STATUSSEN as s (s)}<option value={s}>{s}</option>{/each}
+											</select>
+										</div>
+									</div>
+									<div>
+										<span class="mb-1 block text-xs font-medium text-muted-foreground">Omschrijving</span>
+										<Textarea bind:value={inv.omschrijving} onblur={saveInvalshoeken} rows={2} />
+									</div>
+									<div>
+										<span class="mb-1 block text-xs font-medium text-muted-foreground">Onderbouwing</span>
+										<Textarea bind:value={inv.onderbouwing} onblur={saveInvalshoeken} rows={2} />
+									</div>
+
+									<!-- RICE-light scorekaart -->
+									<div class="space-y-2 rounded-md border border-dashed bg-background p-2.5">
+										<div class="flex items-center justify-between gap-2">
+											<span class="text-xs font-semibold text-muted-foreground">Scorekaart</span>
+											{#if inv.score}
+												<Badge
+													variant="outline"
+													class={cn('font-medium', prioriteitKleur[afgeleidePrioriteit(inv.score)])}
+												>
+													Prioriteit: {afgeleidePrioriteit(inv.score)}
+												</Badge>
+											{:else}
+												<span class="text-xs text-muted-foreground">nog niet gescoord</span>
+											{/if}
+										</div>
+										<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+											{#each SCORE_FACTOREN as f (f.key)}
+												<div>
+													<span class="mb-0.5 block text-xs text-muted-foreground" title={f.hint}>{f.label}</span>
+													<select
+														value={inv.score?.[f.key] ?? ''}
+														onchange={(e) => setInvScore(inv, f.key, e.currentTarget.value as ScoreNiveau)}
+														class="h-8 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+													>
+														<option value="" disabled>—</option>
+														{#each SCORE_NIVEAUS as n (n)}<option value={n}>{n}</option>{/each}
+													</select>
+												</div>
+											{/each}
+										</div>
+										{#if inv.score?.toelichting}
+											<p class="text-xs text-muted-foreground">{inv.score.toelichting}</p>
+										{/if}
+									</div>
+
+									<Button
+										variant="ghost"
+										size="sm"
+										class="text-muted-foreground"
+										onclick={() => invArchiveer(inv, true)}
+									>
+										<Archive class="size-4" /> Archiveren
+									</Button>
+								</div>
+							{/if}
+						</li>
+					{/each}
+				</ol>
+			{/if}
+
+			<!-- Backlog-archief -->
+			{#if backlogArchief.length > 0}
+				<div>
+					<button
+						type="button"
+						class="text-sm font-medium text-muted-foreground hover:text-foreground"
+						onclick={() => (toonBacklogArchief = !toonBacklogArchief)}
+					>
+						{toonBacklogArchief ? 'Verberg' : 'Toon'} gearchiveerd ({backlogArchief.length})
+					</button>
+					{#if toonBacklogArchief}
+						<div class="mt-2 space-y-2">
+							{#each backlogArchief as inv (inv)}
+								<div class="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2 text-sm">
+									<span>
+										{inv.naam || '(naamloos)'}
+										<span class="text-muted-foreground">· {inv.funnelfase}</span>
+									</span>
+									<Button variant="ghost" size="sm" onclick={() => invArchiveer(inv, false)}>
+										<ArchiveRestore class="size-4" /> Herstellen
+									</Button>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/if}
+				</div>
+			{/if}
+		</section>
 	{/if}
 
 	<!-- Testvolgorde-indicator -->
@@ -316,15 +716,15 @@
 	<!-- Tabel -->
 	{#if actief.length > 0}
 		<div class="overflow-x-auto rounded-lg border">
-			<table class="w-full min-w-[1200px] border-collapse text-sm">
+			<table class="w-full min-w-[1180px] border-collapse text-sm">
 				<thead>
 					<tr class="border-b bg-muted/50 text-left text-xs font-medium text-muted-foreground">
 						<th class="w-24 p-2">Funnelfase</th>
-						<th class="w-48 p-2">Invalshoek</th>
-						<th class="w-36 p-2">Format</th>
-						<th class="w-44 p-2">Structuur</th>
-						<th class="w-36 p-2">Creator type</th>
-						<th class="w-56 p-2">Hypothese</th>
+						<th class="w-56 p-2">Invalshoek</th>
+						<th class="w-32 p-2">Format</th>
+						<th class="w-40 p-2">Structuur</th>
+						<th class="w-32 p-2">Creator type</th>
+						<th class="w-64 p-2">Hypothese</th>
 						<th class="w-32 p-2">Test-variabele</th>
 						<th class="w-28 p-2">Prioriteit</th>
 						<th class="w-32 p-2">Status</th>
@@ -335,11 +735,11 @@
 					{#each actief as c (c.id)}
 						<tr class={cn('border-b align-top', c.status === 'Live' && 'bg-brand-lime/5')}>
 							<td class="p-2">{@render selectCel(c, 'funnelfase', FUNNELFASES, true)}</td>
-							<td class="p-2">{@render inputCel(c, 'invalshoek', 'Invalshoek')}</td>
+							<td class="p-2">{@render textareaCel(c, 'invalshoek', 'Invalshoek', 72)}</td>
 							<td class="p-2">{@render comboCel(c, 'format', 'dl-format')}</td>
 							<td class="p-2">{@render comboCel(c, 'structuur', 'dl-structuur')}</td>
 							<td class="p-2">{@render inputCel(c, 'creator_type', 'Bijv. micro-influencer')}</td>
-							<td class="p-2">{@render inputCel(c, 'hypothese', 'Wat verwacht je?')}</td>
+							<td class="p-2">{@render textareaCel(c, 'hypothese', 'Wat verwacht je?', 96)}</td>
 							<td class="p-2">{@render comboCel(c, 'variabele', 'dl-variabele')}</td>
 							<td class="p-2">{@render selectCel(c, 'prioriteit', PRIORITEITEN, true)}</td>
 							<td class="p-2">{@render selectCel(c, 'status', CONCEPT_STATUSSEN, false)}</td>

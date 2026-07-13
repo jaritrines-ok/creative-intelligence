@@ -71,6 +71,15 @@ Alle generaties gebruiken **structured outputs** (JSON-schema → gegarandeerd v
 
 ## Wijzigingen (nieuwste boven)
 
+### 2026-07-13 — Herontwerp stap 1: trigger map = inzicht, invalshoeken = test-backlog in matrix
+- **Wat:** de lagen strak getrokken (uit de review-sessie). (1) **Trigger map** toont nu puur het inzicht (secties + persona's + versiebeheer) — het invalshoeken-blok met de 36 scorekaart-dropdowns is eraf; onderaan een doorverwijs-kaart naar de matrix. (2) **Invalshoeken** verschijnen als **inklapbare "Test-backlog" bovenaan de matrix**, automatisch geprioriteerd op RICE (hoog→laag; ongescoord onderaan), per rij prioriteit/funnelfase/status-badges + inklapbaar "Bijstellen" (naam/fase/status/omschrijving/onderbouwing/4 score-selects/archiveren/verwijderen) + "Scores opnieuw voorstellen" + "Invalshoek toevoegen" + archief. (3) **Auto-scoren bij generatie:** na het opslaan van de trigger map worden de invalshoeken meteen gescoord (best-effort ná insert → geen dataverlies bij timeout), zodat de backlog direct geprioriteerd is.
+- **UX-fixes matrix:** backlog is **inklapbaar** (standaard dicht zodra er al concepten zijn, dan zie je meteen de matrix); de lange tekstvelden **Invalshoek** en **Hypothese** zijn meegroeiende textareas die standaard compact blijven (max. hoogte, intern scrollen) en **volledig uitklappen bij focus** — geen horizontaal gescrol meer binnen een smal vakje.
+- **Waarom:** trigger map was te vol/intens; het team wil de trigger map als volledig klantbeeld en de prioritering (RICE) automatisch → de matrix bepaalt de tests. Zie `HANDOFF.md` voor de bredere koers.
+- **Bestanden:** `triggermap/+page.svelte` (herschreven), `triggermap/+page.server.ts` (auto-score na insert), `matrix/+page.server.ts` (laadt actief `versieId`), `matrix/+page.svelte` (test-backlog + inklap + meegroeiende velden).
+- **Let op:** de genereren-actie doet nu 2 AI-calls achter elkaar (trigger map `medium` + scoring `low`) → timeout-risico bij >60s; daarom insert-first-then-update (trigger map blijft altijd bewaard). Bij Vercel Pro kan `maxDuration` omhoog.
+- **Verificatie:** `svelte-check` 0 fouten; dev-server compileert schoon; live in de browser bevestigd door gebruiker (backlog inklapbaar, velden compact + uitklappen bij focus). Nog niet gepusht/gedeployed.
+- **Migratie:** geen (invalshoeken/scores in `trigger_map_versions.invalshoeken` jsonb).
+
 ### 2026-07-10 — Scorekaart: RICE-light prioriteit per invalshoek · `2b10220`
 - **Wat:** transparante tussenstap tussen trigger map en matrix. Per invalshoek een RICE-light score (Bereik · Impact · Bewijskracht · Effort, elk L/M/H) → deterministisch afgeleide prioriteit. "Scores voorstellen" (AI) vult de scores + toelichting; de strateeg controleert/stelt bij (L/M/H-selects). De matrix neemt de goedgekeurde prioriteit exact over.
 - **Waarom:** de prioriteit navolgbaar en controleerbaar maken (niet meer "de LLM gokt"), met de mens in de lus vóórdat de matrix gemaakt wordt.
