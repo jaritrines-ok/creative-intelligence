@@ -108,6 +108,18 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 			return json({ concept: data });
 		}
 
+		case 'herorden': {
+			const ids: string[] = Array.isArray(body.ids) ? body.ids.map((x: unknown) => String(x)) : [];
+			if (ids.length === 0) return json({ ok: true });
+			// Volgorde = positie in de aangeleverde lijst. RLS beschermt: alleen eigen concepten.
+			const resultaten = await Promise.all(
+				ids.map((id, i) => supabase.from('concepts').update({ volgorde: i }).eq('id', id))
+			);
+			const fout = resultaten.find((r) => r.error);
+			if (fout?.error) error(500, fout.error.message);
+			return json({ ok: true });
+		}
+
 		case 'archiveer':
 		case 'herstel': {
 			const id = String(body.id ?? '');
@@ -133,6 +145,37 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 				.eq('is_actief', true)
 				.maybeSingle();
 			if (!tm) error(400, 'Genereer eerst een trigger map — die vormt de basis voor de matrix.');
+
+			// Learnings uit eerdere testrondes verzamelen → zelfversterkende loop: de nieuwe
+			// concepten bouwen voort op winnaars en vermijden ontkrachte invalshoeken.
+			const { data: eerdere } = await supabase
+				.from('concepts')
+				.select('invalshoek, funnelfase, format, structuur, creator_type, is_winnaar, ai_analyse, observatie')
+				.eq('client_id', clientId);
+			const winnaars = (eerdere ?? [])
+				.filter((c) => c.is_winnaar)
+				.map((c) => {
+					const a = (c.ai_analyse as { wat_werkte?: string; volgende_stap?: string } | null) ?? null;
+					return {
+						invalshoek: c.invalshoek,
+						funnelfase: c.funnelfase,
+						format: c.format,
+						structuur: c.structuur,
+						creator_type: c.creator_type,
+						wat_werkte: a?.wat_werkte ?? null,
+						volgende_stap: a?.volgende_stap ?? null,
+						observatie: c.observatie
+					};
+				});
+			const invLijst = (tm.invalshoeken as Array<{ naam?: string; status?: string }> | null) ?? [];
+			const werkt = invLijst
+				.filter((i) => i.status === 'Getest — werkt')
+				.map((i) => i.naam ?? '')
+				.filter(Boolean);
+			const werktNiet = invLijst
+				.filter((i) => i.status === 'Getest — werkt niet')
+				.map((i) => i.naam ?? '')
+				.filter(Boolean);
 
 			try {
 				const res = await genereerMatrix(
@@ -170,7 +213,8 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 							prioriteit: i.score ? afgeleidePrioriteit(i.score) : undefined
 						}))
 					},
-					richtlijnen
+					richtlijnen,
+					{ winnaars, werkt, werktNiet }
 				);
 
 				await supabase.from('ai_logs').insert({

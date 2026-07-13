@@ -51,7 +51,14 @@
 	}
 	async function toggleWinnaar(c: Concept) {
 		c.is_winnaar = !c.is_winnaar;
-		await postJSON('/api/sprint', { type: 'winnaar', id: c.id, waarde: c.is_winnaar });
+		vervolgMelding = null;
+		const { invalshoekBijgewerkt } = await postJSON<{ invalshoekBijgewerkt: string | null }>(
+			'/api/sprint',
+			{ type: 'winnaar', id: c.id, waarde: c.is_winnaar }
+		);
+		if (c.is_winnaar && invalshoekBijgewerkt) {
+			vervolgMelding = `Invalshoek "${invalshoekBijgewerkt}" is in de test-backlog gemarkeerd als "Getest — werkt".`;
+		}
 	}
 	async function genAnalyse(c: Concept) {
 		bezigAnalyse[c.id] = true;

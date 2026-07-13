@@ -42,6 +42,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ListOrdered from '@lucide/svelte/icons/list-ordered';
+	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 
 	let { data } = $props();
 
@@ -299,6 +300,41 @@
 		} finally {
 			bezigGenereren = false;
 		}
+	}
+
+	// ---- Rijen slepen om te herordenen (handmatige testvolgorde) ----
+	let sleepId = $state<string | null>(null);
+	let sleepOverId = $state<string | null>(null);
+
+	function opDragStart(id: string, e: DragEvent) {
+		sleepId = id;
+		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+	}
+	function opDragOver(id: string, e: DragEvent) {
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		sleepOverId = id;
+	}
+	function opDragEnd() {
+		sleepId = null;
+		sleepOverId = null;
+	}
+	function opDrop(doelId: string) {
+		const bron = sleepId;
+		sleepId = null;
+		sleepOverId = null;
+		if (!bron || bron === doelId) return;
+		const lijst = actief.map((c) => c.id);
+		const van = lijst.indexOf(bron);
+		const naar = lijst.indexOf(doelId);
+		if (van < 0 || naar < 0) return;
+		lijst.splice(naar, 0, ...lijst.splice(van, 1));
+		// Nieuwe volgorde lokaal toepassen (derived hersorteert) + persisteren.
+		lijst.forEach((id, i) => {
+			const c = concepten.find((x) => x.id === id);
+			if (c) c.volgorde = i;
+		});
+		postJSON('/api/concepts', { type: 'herorden', ids: lijst });
 	}
 
 	const statusKleur: Record<string, string> = {
@@ -719,6 +755,7 @@
 			<table class="w-full min-w-[1180px] border-collapse text-sm">
 				<thead>
 					<tr class="border-b bg-muted/50 text-left text-xs font-medium text-muted-foreground">
+						<th class="w-7 p-2"></th>
 						<th class="w-24 p-2">Funnelfase</th>
 						<th class="w-56 p-2">Invalshoek</th>
 						<th class="w-32 p-2">Format</th>
@@ -733,7 +770,30 @@
 				</thead>
 				<tbody>
 					{#each actief as c (c.id)}
-						<tr class={cn('border-b align-top', c.status === 'Live' && 'bg-brand-lime/5')}>
+						<tr
+							class={cn(
+								'border-b align-top',
+								c.status === 'Live' && 'bg-brand-lime/5',
+								sleepId === c.id && 'opacity-40',
+								sleepOverId === c.id && sleepId !== c.id && 'border-t-2 border-t-brand-green'
+							)}
+							ondragover={(e) => opDragOver(c.id, e)}
+							ondrop={() => opDrop(c.id)}
+							ondragend={opDragEnd}
+						>
+							<td class="p-2">
+								<button
+									type="button"
+									draggable="true"
+									ondragstart={(e) => opDragStart(c.id, e)}
+									ondragend={opDragEnd}
+									title="Sleep om de testvolgorde te wijzigen"
+									aria-label="Versleep rij"
+									class="flex cursor-grab items-center justify-center text-muted-foreground hover:text-foreground active:cursor-grabbing"
+								>
+									<GripVertical class="size-4" />
+								</button>
+							</td>
 							<td class="p-2">{@render selectCel(c, 'funnelfase', FUNNELFASES, true)}</td>
 							<td class="p-2">{@render textareaCel(c, 'invalshoek', 'Invalshoek', 72)}</td>
 							<td class="p-2">{@render comboCel(c, 'format', 'dl-format')}</td>
@@ -782,7 +842,7 @@
 						</tr>
 						{#if uitgeklapt.has(c.id) && c.onderbouwing}
 							<tr class="border-b bg-brand-mint/30">
-								<td colspan="10" class="px-3 py-2">
+								<td colspan="11" class="px-3 py-2">
 									<p class="text-sm">
 										<span class="font-semibold text-brand-green">Waarom dit concept:</span>
 										{c.onderbouwing}

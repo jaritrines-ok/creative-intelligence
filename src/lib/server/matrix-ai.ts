@@ -37,6 +37,24 @@ interface TriggerMapContext {
 	}>;
 }
 
+/** Terugkoppeling uit eerdere testrondes — maakt de Creative Loop zelfversterkend. */
+interface LearningsContext {
+	winnaars?: Array<{
+		invalshoek?: string | null;
+		funnelfase?: string | null;
+		format?: string | null;
+		structuur?: string | null;
+		creator_type?: string | null;
+		wat_werkte?: string | null;
+		volgende_stap?: string | null;
+		observatie?: string | null;
+	}>;
+	/** Namen van invalshoeken die getest zijn en wérken (bouw hierop voort). */
+	werkt?: string[];
+	/** Namen van invalshoeken die getest zijn en NIET werken (niet opnieuw voorstellen). */
+	werktNiet?: string[];
+}
+
 const SCHEMA = {
 	type: 'object',
 	additionalProperties: false,
@@ -93,9 +111,14 @@ Richtlijnen:
 - "hypothese": concreet en toetsbaar (Wij verwachten dat ... omdat ...).
 - "prioriteit" (Hoog/Middel/Laag): als bij de invalshoek een "prioriteit" is meegegeven (uit de scorekaart), NEEM DIE EXACT OVER — dat is de door de strateeg goedgekeurde weging. Alleen als er géén prioriteit is meegegeven, weeg je zelf af op aansluiting bij pijnpunt/wens/kans, persona-bereik en funnelfase. Maak in de onderbouwing kort expliciet waarom deze prioriteit past.
 - "onderbouwing": 1-3 zinnen die transparant maken WAAROM dit concept in de matrix staat. Benoem concreet (a) waarom deze invalshoek kansrijk is — koppel het aan een specifiek pijnpunt, wens, bezwaar of kans uit de trigger map — en (b) waarom je deze prioriteit geeft. Dit is de verantwoording die de strateeg leest om je keuze te kunnen controleren; wees specifiek, niet generiek.
+- LEARNINGS-LOOP: als er "Learnings uit eerdere testrondes" zijn meegegeven, bouw daar expliciet op voort — neem de winnende eigenschappen (format/structuur/creator) als vertrekpunt, verwerk de "volgende stap"-suggesties, en stel GEEN ontkrachte invalshoeken opnieuw voor. Verwijs in de onderbouwing kort naar de learning waarop je voortbouwt.
 - Taal: Nederlands. Gebruik de taal van de doelgroep waar passend. Baseer je op de trigger map — geen aannames.`;
 
-export async function genereerMatrix(tm: TriggerMapContext, richtlijnen?: string) {
+export async function genereerMatrix(
+	tm: TriggerMapContext,
+	richtlijnen?: string,
+	learnings?: LearningsContext
+) {
 	// Gearchiveerde invalshoeken tellen niet meer mee.
 	const actieveInvalshoeken = (tm.invalshoeken ?? []).filter((i) => !i.gearchiveerd);
 	const context = [
@@ -126,6 +149,31 @@ export async function genereerMatrix(tm: TriggerMapContext, richtlijnen?: string
 		tm.taal_doelgroep?.length ? `Taal doelgroep: ${tm.taal_doelgroep.join('; ')}` : '',
 		tm.kansen_vs_concurrenten?.length
 			? `Kansen t.o.v. concurrenten: ${tm.kansen_vs_concurrenten.join('; ')}`
+			: '',
+		learnings?.winnaars?.length || learnings?.werkt?.length || learnings?.werktNiet?.length
+			? [
+					'## Learnings uit eerdere testrondes (BOUW HIEROP VOORT)',
+					learnings.winnaars?.length
+						? 'Winnende concepten (houd de winnende eigenschappen als vertrekpunt aan):\n' +
+							learnings.winnaars
+								.map(
+									(w) =>
+										`- [${w.funnelfase ?? '?'}] "${w.invalshoek ?? ''}" — ${[w.format, w.structuur, w.creator_type].filter(Boolean).join(' / ') || 'geen dims'}` +
+										(w.wat_werkte ? `\n    Wat werkte: ${w.wat_werkte}` : '') +
+										(w.volgende_stap ? `\n    Volgende stap: ${w.volgende_stap}` : '') +
+										(w.observatie ? `\n    Observatie: ${w.observatie}` : '')
+								)
+								.join('\n')
+						: '',
+					learnings.werkt?.length
+						? `Bevestigde invalshoeken (werken — bouw hierop voort): ${learnings.werkt.join('; ')}`
+						: '',
+					learnings.werktNiet?.length
+						? `Ontkrachte invalshoeken (NIET opnieuw voorstellen): ${learnings.werktNiet.join('; ')}`
+						: ''
+				]
+					.filter(Boolean)
+					.join('\n')
 			: '',
 		richtlijnen?.trim()
 			? `## Extra sturing van de strateeg (VERWERK DIT expliciet in de concepten en/of prioriteit)\n${richtlijnen.trim()}`

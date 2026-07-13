@@ -18,7 +18,8 @@
 		{ label: 'Trigger Map', href: `${base}/triggermap` },
 		{ label: 'Matrix', href: `${base}/matrix` },
 		{ label: 'Brief', href: `${base}/brief` },
-		{ label: 'Sprint', href: `${base}/sprint` }
+		{ label: 'Sprint', href: `${base}/sprint` },
+		{ label: 'Learnings', href: `${base}/learnings` }
 	]);
 
 	function tabActief(href: string): boolean {

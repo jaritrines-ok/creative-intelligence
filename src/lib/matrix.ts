@@ -25,12 +25,20 @@ const PRIO_ORDER: Record<string, number> = { Hoog: 0, Middel: 1, Laag: 2 };
 export interface SorteerbaarConcept {
 	funnelfase: Funnelfase | null;
 	prioriteit: Prioriteit | null;
+	volgorde: number | null;
 	created_at: string;
 }
 
-/** Sorteert op funnelfase (TOFU→BOFU), dan prioriteit (Hoog→Laag), dan aanmaakdatum. */
+/**
+ * Sorteert primair op handmatige `volgorde` (slepen); zolang die niet gezet is (null) valt 'ie
+ * terug op funnelfase (TOFU→BOFU) → prioriteit (Hoog→Laag) → aanmaakdatum. Zo gedraagt een
+ * ongeordende matrix zich als voorheen, en neemt zodra je sleept de handmatige volgorde het over.
+ */
 export function sorteerConcepten<T extends SorteerbaarConcept>(concepten: T[]): T[] {
 	return [...concepten].sort((a, b) => {
+		const va = a.volgorde ?? Number.MAX_SAFE_INTEGER;
+		const vb = b.volgorde ?? Number.MAX_SAFE_INTEGER;
+		if (va !== vb) return va - vb;
 		const fa = a.funnelfase ? FUNNEL_ORDER[a.funnelfase] : 99;
 		const fb = b.funnelfase ? FUNNEL_ORDER[b.funnelfase] : 99;
 		if (fa !== fb) return fa - fb;

@@ -65,12 +65,49 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 		case 'winnaar': {
 			const id = String(body.id ?? '');
 			if (!id) error(400, 'Ontbrekend id');
-			const { error: dbFout } = await supabase
+			const waarde = !!body.waarde;
+			const { data: concept, error: dbFout } = await supabase
 				.from('concepts')
-				.update({ is_winnaar: !!body.waarde })
-				.eq('id', id);
-			if (dbFout) error(500, dbFout.message);
-			return json({ ok: true });
+				.update({ is_winnaar: waarde })
+				.eq('id', id)
+				.select('client_id, invalshoek')
+				.single();
+			if (dbFout || !concept) error(500, dbFout?.message ?? 'Opslaan mislukt');
+
+			// Loop sluiten: een bevestigde winnaar markeert de bijbehorende invalshoek in de
+			// actieve trigger map als "Getest — werkt", zodat de backlog meebeweegt met de resultaten.
+			let invalshoekBijgewerkt: string | null = null;
+			if (waarde && concept.invalshoek) {
+				const norm = (v: unknown) =>
+					String(v ?? '')
+						.replace(/^\s*\[[^\]]*\]\s*/, '')
+						.trim()
+						.toLowerCase();
+				const doel = norm(concept.invalshoek);
+				const { data: tm } = await supabase
+					.from('trigger_map_versions')
+					.select('id, invalshoeken')
+					.eq('client_id', concept.client_id)
+					.eq('is_actief', true)
+					.maybeSingle();
+				const lijst = (tm?.invalshoeken as Array<Record<string, unknown>> | null) ?? [];
+				let gewijzigd = false;
+				const nieuw = lijst.map((i) => {
+					if (norm(i.naam) === doel && i.status !== 'Getest — werkt') {
+						gewijzigd = true;
+						invalshoekBijgewerkt = String(i.naam ?? '');
+						return { ...i, status: 'Getest — werkt' };
+					}
+					return i;
+				});
+				if (gewijzigd && tm) {
+					await supabase
+						.from('trigger_map_versions')
+						.update({ invalshoeken: nieuw as unknown as Json })
+						.eq('id', tm.id);
+				}
+			}
+			return json({ ok: true, invalshoekBijgewerkt });
 		}
 
 		case 'brief': {
