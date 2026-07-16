@@ -71,6 +71,11 @@ Alle generaties gebruiken **structured outputs** (JSON-schema → gegarandeerd v
 
 ## Wijzigingen (nieuwste boven)
 
+### 2026-07-16 — Creative Loop compact op werk-tabs · `51df67c`
+- **Wat:** de volledige ronde Creative Loop blijft op de **overzicht-tab**; op alle **andere tabs** een nieuwe **compacte horizontale stepper** (`CreativeLoopCompact.svelte`) — 4 fases (Intake→Trigger Map→Matrix→Sprint), huidige gemarkeerd, afgeronde met groen bolletje, klikbaar naar de fase-tab. Layout kiest op basis van `pad === base`. Scheelt veel verticale ruimte op de werk-tabs.
+- **Verificatie:** `svelte-check` 0 fouten; gebruiker akkoord. Gemerged naar main + live.
+- **Migratie:** geen.
+
 ### 2026-07-16 — UX: klikbare Creative Loop + klant-overzicht als reis-dashboard (branch)
 - **Wat:** (1) De **Creative Loop-ring is klikbaar** — elk knooppunt linkt naar de bijbehorende fase-tab (intake/triggermap/matrix/sprint). `CreativeLoop.svelte` kreeg optionele `base`-prop + `FASE_TAB`-mapping; knooppunten worden in een SVG-`<a>` gewikkeld met hover + titel. Layout geeft `base` mee. Zonder `base` blijft 'ie gewoon read-only. (2) De **overzicht-tab is een reis-dashboard** geworden: bovenaan een **"Volgende stap"-kaart** (afgeleide, contextuele CTA → juiste tab) + een rij **tegels** (Intake %, Trigger map #invalshoeken, Matrix #concepten/live, Sprint #getest/winnaars, Learnings #winnaars), elk klikbaar. Intake-voortgang + Gegevens + status + verwijderen blijven.
 - **Volgende-stap-logica** (server): geen trigger map → intake (bij <25% intake) of trigger map genereren; wél trigger map maar 0 concepten → matrix-opzet; concepten maar niets getest → sprintresultaten; anders → learnings/volgende ronde.
