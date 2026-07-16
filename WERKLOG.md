@@ -71,6 +71,13 @@ Alle generaties gebruiken **structured outputs** (JSON-schema → gegarandeerd v
 
 ## Wijzigingen (nieuwste boven)
 
+### 2026-07-16 — Intake-automatisering MVP: website- & reviews-scan vanaf URL (branch)
+- **Wat:** eerste stap van de intake-automatisering, ZONDER extra kosten/plan. (1) **Concurrent-scan (Bron 3):** knop "Scan website (AI)" per concurrent → server haalt de opgegeven URL op (gewone `fetch`, geen betaalde web-search) → Claude vult `invalshoeken`, `website_taal` en `kansen` als voorstel in (velden blijven bewerkbaar/auto-save). (2) **Reviews-scan (Bron 4):** review-URL-veld + knop "Scan reviews (AI)" → fetch → Claude vat samen in Positief/Negatief/Gaps → vult het samenvattingsveld.
+- **Techniek:** `src/lib/server/web-scan.ts` (`haalPaginaTekst` = fetch + HTML-strip, 15s timeout, 40k-teken cap, best-effort; `scanConcurrentWebsite` + `scanReviews` via `claudeJSON` effort 'low'). `/api/intake` types `scan_concurrent` + `scan_reviews` (schrijven direct naar de rij + loggen in ai_logs module 'concurrent_scan'/'review_scan'). Intake-UI: scan-knoppen + `{#key}`-reseed van AutoSaveField na scan + foutmelding.
+- **Bewuste grenzen (eerlijk):** werkt goed voor server-gerenderde sites; JS-only sites of bot-detectie geven weinig terug → duidelijke foutmelding, dan handmatig. Meta Ad Library / TikTok en het AUTOMATISCH ONTDEKKEN van bronnen (zonder URL) zitten hier NIET in — dat vereist betaalde web-search en/of achtergrond-jobs (Vercel Pro/Supabase Edge Functions); aparte beslissing.
+- **Verificatie:** `svelte-check` 0 fouten. NIET end-to-end getest (externe fetch + login vereist) en NIET gedeployed — staat op branch `intake-automatisering` voor test door gebruiker.
+- **Migratie:** geen.
+
 ### 2026-07-16 — Brief format-bewust + kopiëren/exporteren
 - **Wat:** de creative brief past zich nu aan het **formaat** aan i.p.v. altijd video aan te nemen. Statisch beeld → "hook" wordt eye-catcher/openingsbeeld + headline, "structuur" wordt lay-out/compositie, géén seconden; carousel → "hook" = eerste kaart, "kern" = kaart-voor-kaart; video/motion → 0-3 sec hook zoals voorheen. De labels op de brief-pagina passen mee (`briefSecties(format)`). Plus **"Kopieer" (Markdown naar klembord)** en **"Export" (.md-bestand)** per brief.
 - **Bestanden:** `sprint.ts` (`isStatischFormat`/`isCarouselFormat`/`briefSecties(format)`/`briefNaarMarkdown`; `BRIEF_SECTIES` = `briefSecties(null)`), `sprint-ai.ts` (`formaatInstructie` in de brief-context), `brief/+page.svelte` (format-labels + kopiëren/exporteren).

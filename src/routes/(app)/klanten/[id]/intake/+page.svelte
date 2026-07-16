@@ -141,6 +141,59 @@
 		return postIntake({ type: 'bron4.update', id: rij.id, patch: { [veld]: waarde } });
 	}
 
+	// ---- URL-scan (concurrent-website / reviews) — AI vult een voorstel in ----
+	let scanBezig = $state<Record<string, boolean>>({});
+	let scanFout = $state<string | null>(null);
+	let scanKey = $state<Record<string, number>>({}); // forceert reseed van AutoSaveField na scan
+	let reviewUrl = $state<Record<string, string>>({});
+
+	async function scanConcurrent(c: (typeof bron3)[number]) {
+		const url = (c.url ?? '').trim();
+		if (!url) {
+			scanFout = 'Vul eerst de URL van de concurrent in.';
+			return;
+		}
+		scanBezig[c.id] = true;
+		scanFout = null;
+		try {
+			const { velden } = await postIntake<{
+				velden: { invalshoeken: string; website_taal: string; kansen: string };
+			}>({ type: 'scan_concurrent', id: c.id, url, clientId, naam: c.naam });
+			c.invalshoeken = velden.invalshoeken;
+			c.website_taal = velden.website_taal;
+			c.kansen = velden.kansen;
+			scanKey[c.id] = (scanKey[c.id] ?? 0) + 1;
+		} catch (e) {
+			scanFout = e instanceof Error ? e.message : 'Scan mislukt';
+		} finally {
+			scanBezig[c.id] = false;
+		}
+	}
+
+	async function scanReviewBron(r: (typeof bron4)[number]) {
+		const url = (reviewUrl[r.id] ?? '').trim();
+		if (!url) {
+			scanFout = 'Vul eerst een review-URL in.';
+			return;
+		}
+		scanBezig[r.id] = true;
+		scanFout = null;
+		try {
+			const { ruwe_tekst } = await postIntake<{ ruwe_tekst: string }>({
+				type: 'scan_reviews',
+				id: r.id,
+				url,
+				clientId
+			});
+			r.ruwe_tekst = ruwe_tekst;
+			scanKey[r.id] = (scanKey[r.id] ?? 0) + 1;
+		} catch (e) {
+			scanFout = e instanceof Error ? e.message : 'Scan mislukt';
+		} finally {
+			scanBezig[r.id] = false;
+		}
+	}
+
 	async function voegBron6Toe() {
 		const { id } = await postIntake<{ id: string }>({ type: 'bron6.insert', clientId });
 		bron6.push({
@@ -426,6 +479,13 @@
 				Voeg 3 tot 10 concurrenten toe. ({bron3.length} toegevoegd)
 			</p>
 
+			{#if scanFout}
+				<div class="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+					<TriangleAlert class="size-4 shrink-0" />
+					{scanFout}
+				</div>
+			{/if}
+
 			{#each bron3 as c, i (c.id)}
 				<div class="rounded-lg border p-4">
 					<div class="mb-3 flex items-center justify-between">
@@ -454,18 +514,40 @@
 							/>
 						</div>
 					</div>
-					<div class="mt-3 space-y-3">
-						{#each bron3Velden as veld (veld.key)}
-							<div class="space-y-1.5">
-								<Label>{veld.label}</Label>
-								<AutoSaveField
-									rows={2}
-									value={(c as Record<string, string | null>)[veld.key] ?? ''}
-									onsave={(w) => bewaarConcurrent(c, veld.key, w)}
-								/>
-							</div>
-						{/each}
+					<div class="mt-3">
+						<Button
+							variant="outline"
+							size="sm"
+							onclick={() => scanConcurrent(c)}
+							disabled={scanBezig[c.id] || !c.url?.trim()}
+						>
+							{#if scanBezig[c.id]}
+								<LoaderCircle class="size-4 animate-spin" />
+								Scannen…
+							{:else}
+								<Sparkles class="size-4" />
+								Scan website (AI)
+							{/if}
+						</Button>
+						<p class="mt-1 text-xs text-muted-foreground">
+							Haalt de website op en vult invalshoeken, taal en kansen in als voorstel — controleer en
+							pas aan.
+						</p>
 					</div>
+					{#key scanKey[c.id] ?? 0}
+						<div class="mt-3 space-y-3">
+							{#each bron3Velden as veld (veld.key)}
+								<div class="space-y-1.5">
+									<Label>{veld.label}</Label>
+									<AutoSaveField
+										rows={2}
+										value={(c as Record<string, string | null>)[veld.key] ?? ''}
+										onsave={(w) => bewaarConcurrent(c, veld.key, w)}
+									/>
+								</div>
+							{/each}
+						</div>
+					{/key}
 				</div>
 			{/each}
 
@@ -484,6 +566,13 @@
 				concurrenten): de terugkerende positieve punten, negatieve punten en de gaps/kansen die je
 				daaruit kunt benutten. Nog geen samenvatting? Plak dan de ruwe reviews/comments.
 			</p>
+
+			{#if scanFout}
+				<div class="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+					<TriangleAlert class="size-4 shrink-0" />
+					{scanFout}
+				</div>
+			{/if}
 
 			{#each bron4 as r, i (r.id)}
 				<div class="rounded-lg border p-4">
@@ -518,14 +607,40 @@
 						</div>
 					</div>
 					<div class="mt-3 space-y-1.5">
-						<Label>Samenvatting (positief · negatief · gaps)</Label>
-						<AutoSaveField
-							rows={5}
-							value={r.ruwe_tekst ?? ''}
-							onsave={(w) => bewaarBron4(r, 'ruwe_tekst', w)}
-							placeholder={'Positief: terugkerende complimenten…\nNegatief: klachten/frustraties…\nGaps/kansen: wat concurrenten laten liggen…'}
-						/>
+						<Label>Reviews automatisch samenvatten (optioneel)</Label>
+						<div class="flex flex-wrap items-center gap-2">
+							<Input
+								class="max-w-md flex-1"
+								placeholder="https://… (Trustpilot / Kiyoh / Google-reviewpagina)"
+								bind:value={reviewUrl[r.id]}
+							/>
+							<Button
+								variant="outline"
+								size="sm"
+								onclick={() => scanReviewBron(r)}
+								disabled={scanBezig[r.id] || !(reviewUrl[r.id] ?? '').trim()}
+							>
+								{#if scanBezig[r.id]}
+									<LoaderCircle class="size-4 animate-spin" />
+									Scannen…
+								{:else}
+									<Sparkles class="size-4" />
+									Scan reviews (AI)
+								{/if}
+							</Button>
+						</div>
 					</div>
+					{#key scanKey[r.id] ?? 0}
+						<div class="mt-3 space-y-1.5">
+							<Label>Samenvatting (positief · negatief · gaps)</Label>
+							<AutoSaveField
+								rows={5}
+								value={r.ruwe_tekst ?? ''}
+								onsave={(w) => bewaarBron4(r, 'ruwe_tekst', w)}
+								placeholder={'Positief: terugkerende complimenten…\nNegatief: klachten/frustraties…\nGaps/kansen: wat concurrenten laten liggen…'}
+							/>
+						</div>
+					{/key}
 				</div>
 			{/each}
 

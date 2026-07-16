@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import type { Database } from '$lib/supabase/database.types';
 import { BRON1_VRAGEN, BRON2_VRAGEN } from '$lib/intake-vragen';
 import { parseIntakeDocument } from '$lib/server/intake-parser';
+import { haalPaginaTekst, scanConcurrentWebsite, scanReviews } from '$lib/server/web-scan';
 import { CLAUDE_MODEL } from '$lib/server/claude';
 
 type Bron5Insert = Database['public']['Tables']['intake_bron5']['Insert'];
@@ -155,6 +156,96 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 			const { error: dbFout } = await sb.from('intake_bron6').delete().eq('id', id);
 			if (dbFout) error(500, dbFout.message);
 			return json({ ok: true });
+		}
+
+		case 'scan_concurrent': {
+			const id = String(body.id ?? '');
+			const url = String(body.url ?? '').trim();
+			const clientId = String(body.clientId ?? '');
+			if (!id || !url) error(400, 'Ontbrekend id of URL');
+
+			try {
+				const tekst = await haalPaginaTekst(url);
+				const res = await scanConcurrentWebsite(tekst, body.naam ? String(body.naam) : null);
+
+				await sb.from('ai_logs').insert({
+					client_id: clientId || null,
+					gebruiker_id: user.id,
+					module: 'concurrent_scan',
+					model: res.model,
+					prompt: res.prompt,
+					response: res.response,
+					tokens_input: res.tokensInput,
+					tokens_output: res.tokensOutput,
+					duur_ms: res.duurMs
+				});
+
+				const velden = {
+					invalshoeken: res.data.invalshoeken,
+					website_taal: res.data.website_taal,
+					kansen: res.data.kansen
+				};
+				const { error: dbFout } = await sb
+					.from('intake_bron3_concurrenten')
+					.update(velden as never)
+					.eq('id', id);
+				if (dbFout) error(500, dbFout.message);
+				return json({ velden });
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : 'onbekende fout';
+				await sb.from('ai_logs').insert({
+					client_id: clientId || null,
+					gebruiker_id: user.id,
+					module: 'concurrent_scan',
+					model: CLAUDE_MODEL,
+					response: 'FOUT: ' + msg
+				});
+				error(500, 'Scan mislukt: ' + msg);
+			}
+			break;
+		}
+
+		case 'scan_reviews': {
+			const id = String(body.id ?? '');
+			const url = String(body.url ?? '').trim();
+			const clientId = String(body.clientId ?? '');
+			if (!id || !url) error(400, 'Ontbrekend id of URL');
+
+			try {
+				const tekst = await haalPaginaTekst(url);
+				const res = await scanReviews(tekst);
+
+				await sb.from('ai_logs').insert({
+					client_id: clientId || null,
+					gebruiker_id: user.id,
+					module: 'review_scan',
+					model: res.model,
+					prompt: res.prompt,
+					response: res.response,
+					tokens_input: res.tokensInput,
+					tokens_output: res.tokensOutput,
+					duur_ms: res.duurMs
+				});
+
+				const ruwe_tekst = res.data.samenvatting;
+				const { error: dbFout } = await sb
+					.from('intake_bron4')
+					.update({ ruwe_tekst } as never)
+					.eq('id', id);
+				if (dbFout) error(500, dbFout.message);
+				return json({ ruwe_tekst });
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : 'onbekende fout';
+				await sb.from('ai_logs').insert({
+					client_id: clientId || null,
+					gebruiker_id: user.id,
+					module: 'review_scan',
+					model: CLAUDE_MODEL,
+					response: 'FOUT: ' + msg
+				});
+				error(500, 'Scan mislukt: ' + msg);
+			}
+			break;
 		}
 
 		case 'parse': {
