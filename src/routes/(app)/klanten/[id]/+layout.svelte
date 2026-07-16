@@ -56,7 +56,7 @@
 
 	<!-- Creative Loop -->
 	<div class="mt-6 rounded-xl border bg-card p-4">
-		<CreativeLoop fase={client.huidige_fase} />
+		<CreativeLoop fase={client.huidige_fase} {base} />
 	</div>
 
 	<!-- Tabs -->

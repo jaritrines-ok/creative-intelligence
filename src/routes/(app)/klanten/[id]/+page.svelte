@@ -11,7 +11,62 @@
 	let client = $derived(data.client);
 	let base = $derived(`/klanten/${client.id}`);
 	let andereStatussen = $derived(STATUSSEN.filter((s) => s !== client.status));
+
+	let tegels = $derived([
+		{ label: 'Intake', waarde: `${data.reis.intakePct}%`, sub: 'ingevuld', href: `${base}/intake` },
+		{
+			label: 'Trigger map',
+			waarde: data.reis.heeftTriggerMap ? `${data.reis.invalshoeken}` : '—',
+			sub: data.reis.heeftTriggerMap ? 'invalshoeken' : 'nog niet gegenereerd',
+			href: `${base}/triggermap`
+		},
+		{
+			label: 'Matrix',
+			waarde: `${data.reis.concepten}`,
+			sub: `concepten · ${data.reis.live} live`,
+			href: `${base}/matrix`
+		},
+		{
+			label: 'Sprint',
+			waarde: `${data.reis.getest}`,
+			sub: `getest · ${data.reis.winnaars} winnaar${data.reis.winnaars === 1 ? '' : 's'}`,
+			href: `${base}/sprint`
+		},
+		{ label: 'Learnings', waarde: `${data.reis.winnaars}`, sub: 'winnaars', href: `${base}/learnings` }
+	]);
 </script>
+
+<!-- Volgende stap -->
+<a
+	href={`${base}/${data.volgendeStap.tab}`}
+	class="mb-6 flex items-center justify-between gap-4 rounded-xl border border-brand-lime/40 bg-brand-mint/40 px-5 py-4 transition-colors hover:bg-brand-mint/60"
+>
+	<div>
+		<p class="text-xs font-medium uppercase tracking-wide text-brand-green">Volgende stap</p>
+		<p class="mt-0.5 font-semibold text-foreground">{data.volgendeStap.label}</p>
+		<p class="mt-0.5 text-sm text-muted-foreground">{data.volgendeStap.hint}</p>
+	</div>
+	<span
+		class="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-brand-green px-3 py-2 text-sm font-medium text-white"
+	>
+		Ga verder
+		<ArrowRight class="size-4" />
+	</span>
+</a>
+
+<!-- Reis-dashboard -->
+<div class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+	{#each tegels as t (t.label)}
+		<a
+			href={t.href}
+			class="rounded-lg border bg-card p-3 transition-colors hover:border-brand-lime/50 hover:bg-brand-mint/20"
+		>
+			<p class="text-xs text-muted-foreground">{t.label}</p>
+			<p class="mt-1 text-2xl font-semibold text-foreground">{t.waarde}</p>
+			<p class="text-xs text-muted-foreground">{t.sub}</p>
+		</a>
+	{/each}
+</div>
 
 <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
 	<!-- Intake-voortgang -->

@@ -2,7 +2,16 @@
 	import { LOOP_STAPPEN } from '$lib/creative-loop';
 	import { FASE_LABELS, type Fase } from '$lib/config';
 
-	let { fase }: { fase: Fase } = $props();
+	// base optioneel: als het is meegegeven worden de knooppunten klikbaar (navigeren naar de fase-tab).
+	let { fase, base }: { fase: Fase; base?: string } = $props();
+
+	/** Fase → tab-pad (segment onder de klantpagina). */
+	const FASE_TAB: Record<Fase, string> = {
+		intake: 'intake',
+		trigger_map: 'triggermap',
+		matrix: 'matrix',
+		sprint: 'sprint'
+	};
 
 	const cx = 280;
 	const cy = 205;
@@ -23,7 +32,8 @@
 				lx: cx + LR * cos,
 				ly: cy + LR * sin,
 				anchor,
-				actief: stap.fase === fase
+				actief: stap.fase === fase,
+				href: base ? `${base}/${FASE_TAB[stap.fase]}` : null
 			};
 		})
 	);
@@ -51,33 +61,36 @@
 		</text>
 
 		{#each nodes as n (n.nummer)}
-			<!-- Knooppunt -->
-			<circle
-				cx={n.x}
-				cy={n.y}
-				r={dot}
-				fill={n.actief ? 'var(--brand-lime)' : 'var(--card)'}
-				stroke={n.actief ? 'var(--brand-green)' : 'var(--border)'}
-				stroke-width={n.actief ? 3 : 2}
-			/>
-			<text
-				x={n.x}
-				y={n.y + 5}
-				text-anchor="middle"
-				style={`font-size:15px; font-weight:700; fill:${n.actief ? 'var(--brand-green)' : 'var(--muted-foreground)'}`}
-			>
-				{n.nummer}
-			</text>
+			<a href={n.href ?? undefined} class={n.href ? 'cursor-pointer transition-opacity hover:opacity-70' : undefined}>
+				{#if n.href}<title>Ga naar {FASE_LABELS[n.fase]}</title>{/if}
+				<!-- Knooppunt -->
+				<circle
+					cx={n.x}
+					cy={n.y}
+					r={dot}
+					fill={n.actief ? 'var(--brand-lime)' : 'var(--card)'}
+					stroke={n.actief ? 'var(--brand-green)' : 'var(--border)'}
+					stroke-width={n.actief ? 3 : 2}
+				/>
+				<text
+					x={n.x}
+					y={n.y + 5}
+					text-anchor="middle"
+					style={`font-size:15px; font-weight:700; fill:${n.actief ? 'var(--brand-green)' : 'var(--muted-foreground)'}`}
+				>
+					{n.nummer}
+				</text>
 
-			<!-- Label -->
-			<text
-				x={n.lx}
-				y={n.ly + 4}
-				text-anchor={n.anchor}
-				style={`font-size:13px; font-weight:${n.actief ? 600 : 400}; fill:${n.actief ? 'var(--foreground)' : 'var(--muted-foreground)'}`}
-			>
-				{n.kort}
-			</text>
+				<!-- Label -->
+				<text
+					x={n.lx}
+					y={n.ly + 4}
+					text-anchor={n.anchor}
+					style={`font-size:13px; font-weight:${n.actief ? 600 : 400}; fill:${n.actief ? 'var(--foreground)' : 'var(--muted-foreground)'}`}
+				>
+					{n.kort}
+				</text>
+			</a>
 		{/each}
 	</svg>
 </div>

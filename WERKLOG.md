@@ -71,6 +71,13 @@ Alle generaties gebruiken **structured outputs** (JSON-schema → gegarandeerd v
 
 ## Wijzigingen (nieuwste boven)
 
+### 2026-07-16 — UX: klikbare Creative Loop + klant-overzicht als reis-dashboard (branch)
+- **Wat:** (1) De **Creative Loop-ring is klikbaar** — elk knooppunt linkt naar de bijbehorende fase-tab (intake/triggermap/matrix/sprint). `CreativeLoop.svelte` kreeg optionele `base`-prop + `FASE_TAB`-mapping; knooppunten worden in een SVG-`<a>` gewikkeld met hover + titel. Layout geeft `base` mee. Zonder `base` blijft 'ie gewoon read-only. (2) De **overzicht-tab is een reis-dashboard** geworden: bovenaan een **"Volgende stap"-kaart** (afgeleide, contextuele CTA → juiste tab) + een rij **tegels** (Intake %, Trigger map #invalshoeken, Matrix #concepten/live, Sprint #getest/winnaars, Learnings #winnaars), elk klikbaar. Intake-voortgang + Gegevens + status + verwijderen blijven.
+- **Volgende-stap-logica** (server): geen trigger map → intake (bij <25% intake) of trigger map genereren; wél trigger map maar 0 concepten → matrix-opzet; concepten maar niets getest → sprintresultaten; anders → learnings/volgende ronde.
+- **Bestanden:** `CreativeLoop.svelte`, `[id]/+layout.svelte` (base), `[id]/+page.server.ts` (reisdata + volgendeStap), `[id]/+page.svelte` (dashboard + CTA).
+- **Verificatie:** `svelte-check` 0 fouten; dev-server compileert schoon. Nog visueel te checken (login vereist) → branch `ux-verbeteringen`.
+- **Migratie:** geen.
+
 ### 2026-07-16 — Robuustheid: Claude-retries bij overbelasting + duidelijke scan-fouten (branch)
 - **Wat:** (1) `claude.ts` — Anthropic-client `maxRetries` 2→4 én een nette foutmelding bij 429/529/5xx ("Claude is momenteel overbelast (tijdelijk). Wacht ~30 seconden…") i.p.v. ruwe API-JSON. Geldt voor ALLE AI-features (trigger map, matrix, brief, document-upload, scans). (2) `web-scan.ts` — realistische browser-User-Agent + `Accept-Language` (meer sites laten `fetch` toe), en een aparte, actiegerichte melding bij 403/401/429 ("de site blokkeert geautomatiseerd ophalen — kopieer de tekst en plak 'm handmatig").
 - **Aanleiding:** test gebruiker gaf 3 fouten: document-upload + website-scan faalden op **529 Overloaded** (tijdelijke Claude-storing, geen bug — website-fetch zelf slaagde wél); reviews-scan op Trustpilot gaf **403** (bot-blokkering).

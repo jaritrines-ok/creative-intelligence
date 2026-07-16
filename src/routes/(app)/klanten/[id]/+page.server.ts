@@ -6,7 +6,7 @@ import { STATUSSEN, type Status } from '$lib/config';
 export const load: PageServerLoad = async ({ params, locals: { supabase } }) => {
 	const id = params.id;
 
-	const [b1, b2, b3, b4, b5] = await Promise.all([
+	const [b1, b2, b3, b4, b5, tm, concepten] = await Promise.all([
 		supabase.from('intake_bron1').select('antwoord').eq('client_id', id),
 		supabase.from('intake_bron2').select('vraag_nummer, antwoord').eq('client_id', id),
 		supabase.from('intake_bron3_concurrenten').select('id').eq('client_id', id),
@@ -15,7 +15,17 @@ export const load: PageServerLoad = async ({ params, locals: { supabase } }) => 
 			.from('intake_bron5')
 			.select('beste_advertenties, best_verkopende_producten, search_console, organische_posts')
 			.eq('client_id', id)
-			.maybeSingle()
+			.maybeSingle(),
+		supabase
+			.from('trigger_map_versions')
+			.select('invalshoeken')
+			.eq('client_id', id)
+			.eq('is_actief', true)
+			.maybeSingle(),
+		supabase
+			.from('concepts')
+			.select('status, gearchiveerd, is_winnaar, hook_rate, hold_rate, ctr, roas, cpa, observatie, ai_analyse')
+			.eq('client_id', id)
 	]);
 
 	const b5row = b5.data;
@@ -36,7 +46,73 @@ export const load: PageServerLoad = async ({ params, locals: { supabase } }) => 
 		bron5Ingevuld
 	});
 
-	return { progress };
+	// ---- Reis-overzicht (dashboard + volgende stap) ----
+	const heeftTriggerMap = !!tm.data;
+	const invalshoeken = Array.isArray(tm.data?.invalshoeken)
+		? (tm.data.invalshoeken as Array<{ gearchiveerd?: boolean }>).filter((i) => !i.gearchiveerd).length
+		: 0;
+	const alleConcepten = concepten.data ?? [];
+	const actieveConcepten = alleConcepten.filter((c) => !c.gearchiveerd);
+	const live = actieveConcepten.filter((c) => c.status === 'Live').length;
+	const winnaars = alleConcepten.filter((c) => c.is_winnaar).length;
+	const getest = alleConcepten.filter(
+		(c) =>
+			c.is_winnaar ||
+			c.hook_rate != null ||
+			c.hold_rate != null ||
+			c.ctr != null ||
+			c.roas != null ||
+			c.cpa != null ||
+			heeftInhoud(c.observatie) ||
+			!!c.ai_analyse
+	).length;
+
+	const reis = {
+		intakePct: progress.totaal,
+		heeftTriggerMap,
+		invalshoeken,
+		concepten: actieveConcepten.length,
+		live,
+		winnaars,
+		getest
+	};
+
+	// Eén duidelijke volgende actie, afgeleid van waar de klant staat.
+	let volgendeStap: { label: string; hint: string; tab: string };
+	if (!heeftTriggerMap) {
+		volgendeStap =
+			progress.totaal < 25
+				? {
+						label: 'Begin met de intake',
+						hint: 'Vul de bronnen zo volledig mogelijk in — hoe beter de intake, hoe sterker alles daarna.',
+						tab: 'intake'
+					}
+				: {
+						label: 'Genereer de trigger map',
+						hint: 'Zet de intake om in inzichten, persona’s en een automatisch geprioriteerde test-backlog.',
+						tab: 'triggermap'
+					};
+	} else if (actieveConcepten.length === 0) {
+		volgendeStap = {
+			label: 'Genereer de matrix-opzet',
+			hint: 'Zet de test-backlog om in concrete concepten om te testen.',
+			tab: 'matrix'
+		};
+	} else if (getest === 0) {
+		volgendeStap = {
+			label: 'Voer de sprintresultaten in',
+			hint: 'Vul de metrics in en laat Claude de learning bepalen.',
+			tab: 'sprint'
+		};
+	} else {
+		volgendeStap = {
+			label: 'Bekijk learnings & start de volgende ronde',
+			hint: 'Markeer winnaars en bouw voort op wat werkt.',
+			tab: 'learnings'
+		};
+	}
+
+	return { progress, reis, volgendeStap };
 };
 
 export const actions: Actions = {
