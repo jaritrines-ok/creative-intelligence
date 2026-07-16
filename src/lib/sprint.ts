@@ -20,19 +20,58 @@ export interface Analyse {
 	volgende_stap: string;
 }
 
-/** Labels + rendervolgorde voor de brief-secties. */
-export const BRIEF_SECTIES: Array<{ key: keyof Brief; label: string }> = [
-	{ key: 'hypothese', label: 'Hypothese' },
-	{ key: 'wie', label: 'Wie + fase + bewustzijn' },
-	{ key: 'gedrag', label: 'Gewenst gedrag' },
-	{ key: 'format', label: 'Format' },
-	{ key: 'structuur', label: 'Structuur' },
-	{ key: 'hook', label: 'Hook (0–3 sec)' },
-	{ key: 'kern', label: 'Kern' },
-	{ key: 'cta', label: 'CTA' },
-	{ key: 'variabele', label: 'Variabele die getest wordt' },
-	{ key: 'succes', label: 'Succescriterium' }
-];
+/** Herkent een statisch beeld (geen video/motion) uit het vrije format-veld. */
+export function isStatischFormat(format?: string | null): boolean {
+	const f = (format ?? '').toLowerCase();
+	return f.includes('static') || f.includes('statisch');
+}
+
+/** Herkent een carousel uit het vrije format-veld. */
+export function isCarouselFormat(format?: string | null): boolean {
+	const f = (format ?? '').toLowerCase();
+	return f.includes('carousel') || f.includes('carrousel');
+}
+
+/**
+ * Labels + rendervolgorde voor de brief-secties, aangepast aan het formaat.
+ * Video/motion → "Hook (0–3 sec)" / "Kern"; statisch → "Eye-catcher" / "Boodschap";
+ * carousel → "Eerste kaart" / "Volgende kaarten".
+ */
+export function briefSecties(format?: string | null): Array<{ key: keyof Brief; label: string }> {
+	const stat = isStatischFormat(format);
+	const car = isCarouselFormat(format);
+	const hookLabel = stat
+		? 'Eye-catcher / openingsbeeld'
+		: car
+			? 'Eerste kaart (scroll-stopper)'
+			: 'Hook (0–3 sec)';
+	const kernLabel = stat ? 'Boodschap / copy' : car ? 'Volgende kaarten' : 'Kern';
+	return [
+		{ key: 'hypothese', label: 'Hypothese' },
+		{ key: 'wie', label: 'Wie + fase + bewustzijn' },
+		{ key: 'gedrag', label: 'Gewenst gedrag' },
+		{ key: 'format', label: 'Format' },
+		{ key: 'structuur', label: stat ? 'Lay-out / compositie' : 'Structuur' },
+		{ key: 'hook', label: hookLabel },
+		{ key: 'kern', label: kernLabel },
+		{ key: 'cta', label: 'CTA' },
+		{ key: 'variabele', label: 'Variabele die getest wordt' },
+		{ key: 'succes', label: 'Succescriterium' }
+	];
+}
+
+/** Labels + rendervolgorde voor de brief-secties (video-default; gebruik briefSecties(format) waar mogelijk). */
+export const BRIEF_SECTIES = briefSecties(null);
+
+/** Zet een brief om naar Markdown (voor kopiëren/exporteren). */
+export function briefNaarMarkdown(b: Brief, titel: string, format?: string | null): string {
+	const secties = briefSecties(format);
+	return (
+		`# Creative brief — ${titel}\n\n` +
+		secties.map((s) => `## ${s.label}\n${b[s.key] ?? ''}`).join('\n\n') +
+		'\n'
+	);
+}
 
 /** Metric-velden voor de sprint-resultaten (kolommen op concepts). */
 export const METRIC_VELDEN = [

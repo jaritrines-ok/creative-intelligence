@@ -133,6 +133,18 @@ export interface VervolgConcept {
 	onderbouwing: string;
 }
 
+/** Formaat-specifieke instructie zodat de brief past bij video, statisch beeld of carousel. */
+function formaatInstructie(format: string | null): string {
+	const f = (format ?? '').toLowerCase();
+	if (f.includes('static') || f.includes('statisch')) {
+		return 'FORMAAT = STATISCH BEELD (geen video). Vul "hook" als het visuele eye-catcher/openingsbeeld dat de scroll stopt — beschrijf het beeld én de headline die erop staat; GEEN tijdsaanduiding of "seconden". Vul "kern" als de kernboodschap/copy op het beeld. Vul "structuur" als de lay-out/compositie (waar staat wat: beeld, headline, subtekst, logo). Gebruik geen video-termen zoals "scène", "shot" of "seconden".';
+	}
+	if (f.includes('carousel') || f.includes('carrousel')) {
+		return 'FORMAAT = CAROUSEL. Vul "hook" als de eerste kaart (de scroll-stopper). Vul "kern" als de opeenvolgende kaarten, kaart-voor-kaart beschreven (kaart 2, 3, ...). Vul "cta" als de laatste kaart. Geen "seconden".';
+	}
+	return 'FORMAAT = VIDEO/MOTION. Vul "hook" als de eerste 0-3 seconden, letterlijk uitgeschreven. Vul "kern" als wat er in het midden gebeurt (beweging/scènes). Beschrijf het als bewegend beeld.';
+}
+
 function conceptTekst(c: ConceptContext): string {
 	return [
 		`Funnelfase: ${c.funnelfase ?? '—'}`,
@@ -149,6 +161,8 @@ export async function genereerBrief(concept: ConceptContext, tm: TriggerMapConte
 	const context = [
 		'## Concept',
 		conceptTekst(concept),
+		'',
+		`## Formaat-instructie (VOLG DIT strikt)\n${formaatInstructie(concept.format)}`,
 		'',
 		'## Trigger map (context)',
 		tm.pijnpunten?.length ? `Pijnpunten: ${tm.pijnpunten.join('; ')}` : '',

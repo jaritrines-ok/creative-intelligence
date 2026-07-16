@@ -6,11 +6,14 @@
 	import { cn } from '$lib/utils';
 	import type { Concept } from '$lib/supabase/database.types';
 	import type { Brief } from '$lib/sprint';
-	import { BRIEF_SECTIES } from '$lib/sprint';
+	import { briefSecties, briefNaarMarkdown } from '$lib/sprint';
 	import { sorteerConcepten } from '$lib/matrix';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import Copy from '@lucide/svelte/icons/copy';
+	import Download from '@lucide/svelte/icons/download';
+	import Check from '@lucide/svelte/icons/check';
 
 	let { data } = $props();
 
@@ -32,6 +35,38 @@
 
 	function brief(c: Concept): Brief | null {
 		return (c.brief as Brief | null) ?? null;
+	}
+
+	let gekopieerd = $state<Record<string, boolean>>({});
+	async function kopieer(c: Concept) {
+		const b = brief(c);
+		if (!b) return;
+		try {
+			await navigator.clipboard.writeText(briefNaarMarkdown(b, c.invalshoek || 'concept', c.format));
+			gekopieerd[c.id] = true;
+			setTimeout(() => (gekopieerd[c.id] = false), 2000);
+		} catch {
+			fout = 'Kopiëren naar klembord mislukt.';
+		}
+	}
+	function exporteer(c: Concept) {
+		const b = brief(c);
+		if (!b) return;
+		const md = briefNaarMarkdown(b, c.invalshoek || 'concept', c.format);
+		const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+		const url = URL.createObjectURL(blob);
+		const naam =
+			'brief-' +
+			(c.invalshoek || 'concept')
+				.toLowerCase()
+				.replace(/[^a-z0-9]+/g, '-')
+				.replace(/^-+|-+$/g, '')
+				.slice(0, 40);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `${naam || 'brief'}.md`;
+		a.click();
+		URL.revokeObjectURL(url);
 	}
 
 	async function genBrief(c: Concept) {
@@ -93,15 +128,41 @@
 								</span>
 							{/if}
 						</div>
-						<Button variant="outline" size="sm" onclick={() => genBrief(c)} disabled={bezig[c.id]}>
-							{#if bezig[c.id]}
-								<LoaderCircle class="size-4 animate-spin" />
-								Genereren…
-							{:else}
-								<FileText class="size-4" />
-								{brief(c) ? 'Brief opnieuw genereren' : 'Genereer brief'}
+						<div class="flex items-center gap-1.5">
+							{#if brief(c)}
+								<Button
+									variant="ghost"
+									size="sm"
+									class="text-muted-foreground"
+									title="Kopieer als Markdown"
+									onclick={() => kopieer(c)}
+								>
+									{#if gekopieerd[c.id]}
+										<Check class="size-4 text-brand-green" /> Gekopieerd
+									{:else}
+										<Copy class="size-4" /> Kopieer
+									{/if}
+								</Button>
+								<Button
+									variant="ghost"
+									size="sm"
+									class="text-muted-foreground"
+									title="Exporteer als .md-bestand"
+									onclick={() => exporteer(c)}
+								>
+									<Download class="size-4" /> Export
+								</Button>
 							{/if}
-						</Button>
+							<Button variant="outline" size="sm" onclick={() => genBrief(c)} disabled={bezig[c.id]}>
+								{#if bezig[c.id]}
+									<LoaderCircle class="size-4 animate-spin" />
+									Genereren…
+								{:else}
+									<FileText class="size-4" />
+									{brief(c) ? 'Brief opnieuw genereren' : 'Genereer brief'}
+								{/if}
+							</Button>
+						</div>
 					</div>
 				</Card.Header>
 
@@ -109,7 +170,7 @@
 					{@const b = brief(c)!}
 					<Card.Content>
 						<div class="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
-							{#each BRIEF_SECTIES as sectie (sectie.key)}
+							{#each briefSecties(c.format) as sectie (sectie.key)}
 								<div>
 									<p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 										{sectie.label}

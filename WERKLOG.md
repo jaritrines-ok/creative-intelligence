@@ -71,6 +71,13 @@ Alle generaties gebruiken **structured outputs** (JSON-schema → gegarandeerd v
 
 ## Wijzigingen (nieuwste boven)
 
+### 2026-07-16 — Brief format-bewust + kopiëren/exporteren
+- **Wat:** de creative brief past zich nu aan het **formaat** aan i.p.v. altijd video aan te nemen. Statisch beeld → "hook" wordt eye-catcher/openingsbeeld + headline, "structuur" wordt lay-out/compositie, géén seconden; carousel → "hook" = eerste kaart, "kern" = kaart-voor-kaart; video/motion → 0-3 sec hook zoals voorheen. De labels op de brief-pagina passen mee (`briefSecties(format)`). Plus **"Kopieer" (Markdown naar klembord)** en **"Export" (.md-bestand)** per brief.
+- **Bestanden:** `sprint.ts` (`isStatischFormat`/`isCarouselFormat`/`briefSecties(format)`/`briefNaarMarkdown`; `BRIEF_SECTIES` = `briefSecties(null)`), `sprint-ai.ts` (`formaatInstructie` in de brief-context), `brief/+page.svelte` (format-labels + kopiëren/exporteren).
+- **Waarom:** het team maakt soms alleen statisch beeld; een video-brief past daar niet op. En een brief moet je aan een creator kunnen geven (kopiëren/export).
+- **Verificatie:** `svelte-check` 0 fouten. Nog te doen: browser-test (format-generatie + kopiëren/export) + pushen.
+- **Migratie:** geen.
+
 ### 2026-07-13 — Herontwerp stap 2: sleepbare testvolgorde, learnings-tab & sluitende loop
 - **Wat:** (2a) **rijen slepen** in de matrix om de testvolgorde handmatig te bepalen — sleep-handvat per rij, opgeslagen in de bestaande `volgorde`-kolom; `sorteerConcepten` sorteert nu primair op `volgorde` (fallback = funnelfase→prioriteit→datum, dus ongeordend gedraagt zich als voorheen). Nieuwe API-actie `herorden` (bulk-update volgorde). (2b) nieuwe **"Learnings"-tab** (na Sprint): tijdlijn die automatisch samenvat uit bestaande sprintdata — aantal tests/winnaars, bevestigde vs. ontkrachte invalshoeken (uit trigger map-status), en per test metrics + observatie + AI-analyse (wat werkte / volgende stap). Geen migratie (leest `concepts` + actieve trigger map). (2c) **loop sluiten:** een bevestigde sprint-winnaar zet de bijbehorende invalshoek in de actieve trigger map op "Getest — werkt" (naam-normalisatie), met groene bevestiging in de Sprint-UI.
 - **Learnings-terugkoppeling (zelfversterkende loop):** de matrix-generatie (`genereerMatrix` + `/api/concepts` genereer) krijgt nu de learnings mee — winnaars (met winnende dims + wat werkte + volgende stap + observatie) en de lijst bevestigde/ontkrachte invalshoeken. SYSTEM-richtlijn: bouw voort op winnende eigenschappen, verwerk "volgende stap", en stel géén ontkrachte invalshoeken opnieuw voor. Zo compoundt de loop: intake goed doen → daarna vooral uitvoeren.
