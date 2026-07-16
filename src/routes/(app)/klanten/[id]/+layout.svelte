@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import StatusBadge from '$lib/components/app/StatusBadge.svelte';
 	import CreativeLoop from '$lib/components/app/CreativeLoop.svelte';
+	import CreativeLoopCompact from '$lib/components/app/CreativeLoopCompact.svelte';
 	import { cn } from '$lib/utils';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Pencil from '@lucide/svelte/icons/pencil';
@@ -54,10 +55,16 @@
 		</Button>
 	</div>
 
-	<!-- Creative Loop -->
-	<div class="mt-6 rounded-xl border bg-card p-4">
-		<CreativeLoop fase={client.huidige_fase} {base} />
-	</div>
+	<!-- Creative Loop: volledig op het overzicht, compact op de werk-tabs -->
+	{#if pad === base}
+		<div class="mt-6 rounded-xl border bg-card p-4">
+			<CreativeLoop fase={client.huidige_fase} {base} />
+		</div>
+	{:else}
+		<div class="mt-6">
+			<CreativeLoopCompact fase={client.huidige_fase} {base} />
+		</div>
+	{/if}
 
 	<!-- Tabs -->
 	<div class="mt-6 border-b">
