@@ -42,30 +42,36 @@ export async function haalPaginaTekst(url: string): Promise<string> {
 
 	const ctrl = new AbortController();
 	const timer = setTimeout(() => ctrl.abort(), 15_000);
-	let html: string;
+	let res: Response;
 	try {
-		const res = await fetch(doel, {
+		res = await fetch(doel, {
 			redirect: 'follow',
 			signal: ctrl.signal,
 			headers: {
+				// Realistische browser-UA: veel sites blokkeren onbekende clients.
 				'User-Agent':
-					'Mozilla/5.0 (compatible; OnlineKlik-CreativeIntelligence/1.0; +https://onlineklik.nl)',
-				Accept: 'text/html,application/xhtml+xml'
+					'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+				Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+				'Accept-Language': 'nl-NL,nl;q=0.9,en;q=0.8'
 			}
 		});
-		if (!res.ok) throw new Error(`de pagina gaf status ${res.status}`);
-		html = await res.text();
 	} catch (e) {
 		if (e instanceof Error && e.name === 'AbortError') {
 			throw new Error('de pagina reageerde niet op tijd');
 		}
-		throw new Error(
-			'kon de pagina niet ophalen' + (e instanceof Error ? ` (${e.message})` : '')
-		);
+		throw new Error('kon de pagina niet ophalen' + (e instanceof Error ? ` (${e.message})` : ''));
 	} finally {
 		clearTimeout(timer);
 	}
 
+	if (res.status === 403 || res.status === 401 || res.status === 429) {
+		throw new Error(
+			`de site blokkeert geautomatiseerd ophalen (status ${res.status}) — kopieer de reviewtekst en plak 'm handmatig in het samenvattingsveld`
+		);
+	}
+	if (!res.ok) throw new Error(`de pagina gaf status ${res.status}`);
+
+	const html = await res.text();
 	const tekst = stripHtml(html);
 	if (tekst.length < 60) {
 		throw new Error(

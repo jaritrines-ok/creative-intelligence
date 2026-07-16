@@ -3,7 +3,9 @@ import { env } from '$env/dynamic/private';
 import { DEFAULT_CLAUDE_MODEL } from '$lib/config';
 
 /** Server-only Anthropic-client. Nooit in client-code importeren ($lib/server). */
-export const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+// maxRetries hoger dan de default (2): tijdens overbelasting (429/529) probeert de SDK
+// automatisch opnieuw met exponentiële backoff.
+export const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 4 });
 
 /** Actief model; overschrijfbaar via ANTHROPIC_MODEL env var. */
 export const CLAUDE_MODEL = env.ANTHROPIC_MODEL || DEFAULT_CLAUDE_MODEL;
@@ -36,14 +38,27 @@ export async function claudeJSON<T>(
 	effort: ClaudeEffort = 'high'
 ): Promise<ClaudeJSONResultaat<T>> {
 	const start = Date.now();
-	const response = await anthropic.messages.create({
-		model: CLAUDE_MODEL,
-		max_tokens: maxTokens,
-		thinking: { type: 'adaptive' },
-		system,
-		messages: [{ role: 'user', content: prompt }],
-		output_config: { effort, format: { type: 'json_schema', schema } }
-	} as Anthropic.Messages.MessageCreateParamsNonStreaming);
+	let response: Anthropic.Messages.Message;
+	try {
+		response = await anthropic.messages.create({
+			model: CLAUDE_MODEL,
+			max_tokens: maxTokens,
+			thinking: { type: 'adaptive' },
+			system,
+			messages: [{ role: 'user', content: prompt }],
+			output_config: { effort, format: { type: 'json_schema', schema } }
+		} as Anthropic.Messages.MessageCreateParamsNonStreaming);
+	} catch (e) {
+		const status = (e as { status?: number })?.status;
+		// 429 = rate limit, 529 = overbelast, 5xx = tijdelijke serverfout. Na de SDK-retries
+		// nog steeds mis → nette, begrijpelijke melding i.p.v. ruwe API-JSON.
+		if (status === 429 || status === 529 || (typeof status === 'number' && status >= 500)) {
+			throw new Error(
+				'Claude is momenteel overbelast (tijdelijk). Wacht ~30 seconden en probeer het opnieuw.'
+			);
+		}
+		throw e;
+	}
 
 	const duurMs = Date.now() - start;
 	const tekst = response.content

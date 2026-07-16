@@ -71,6 +71,13 @@ Alle generaties gebruiken **structured outputs** (JSON-schema → gegarandeerd v
 
 ## Wijzigingen (nieuwste boven)
 
+### 2026-07-16 — Robuustheid: Claude-retries bij overbelasting + duidelijke scan-fouten (branch)
+- **Wat:** (1) `claude.ts` — Anthropic-client `maxRetries` 2→4 én een nette foutmelding bij 429/529/5xx ("Claude is momenteel overbelast (tijdelijk). Wacht ~30 seconden…") i.p.v. ruwe API-JSON. Geldt voor ALLE AI-features (trigger map, matrix, brief, document-upload, scans). (2) `web-scan.ts` — realistische browser-User-Agent + `Accept-Language` (meer sites laten `fetch` toe), en een aparte, actiegerichte melding bij 403/401/429 ("de site blokkeert geautomatiseerd ophalen — kopieer de tekst en plak 'm handmatig").
+- **Aanleiding:** test gebruiker gaf 3 fouten: document-upload + website-scan faalden op **529 Overloaded** (tijdelijke Claude-storing, geen bug — website-fetch zelf slaagde wél); reviews-scan op Trustpilot gaf **403** (bot-blokkering).
+- **Verificatie (fetch, los van Claude):** `kayasieraden.nl` → 200, 131 KB (scan werkt); `nl.trustpilot.com/review/...` → 403 (geblokkeerd, zoals verwacht). `svelte-check` 0 fouten.
+- **Les:** review-platforms (Trustpilot/Kiyoh/Google) blokkeren server-side scraping → betrouwbaar automatisch reviews ophalen vereist een betaalde databron/web-search; website-scan van gewone (server-gerenderde) sites werkt wél.
+- **Migratie:** geen. NB: de `claude.ts`-retryfix is algemeen nuttig (ook voor live document-upload) — komt mee zodra de branch naar main gemerged wordt.
+
 ### 2026-07-16 — Intake-automatisering MVP: website- & reviews-scan vanaf URL (branch)
 - **Wat:** eerste stap van de intake-automatisering, ZONDER extra kosten/plan. (1) **Concurrent-scan (Bron 3):** knop "Scan website (AI)" per concurrent → server haalt de opgegeven URL op (gewone `fetch`, geen betaalde web-search) → Claude vult `invalshoeken`, `website_taal` en `kansen` als voorstel in (velden blijven bewerkbaar/auto-save). (2) **Reviews-scan (Bron 4):** review-URL-veld + knop "Scan reviews (AI)" → fetch → Claude vat samen in Positief/Negatief/Gaps → vult het samenvattingsveld.
 - **Techniek:** `src/lib/server/web-scan.ts` (`haalPaginaTekst` = fetch + HTML-strip, 15s timeout, 40k-teken cap, best-effort; `scanConcurrentWebsite` + `scanReviews` via `claudeJSON` effort 'low'). `/api/intake` types `scan_concurrent` + `scan_reviews` (schrijven direct naar de rij + loggen in ai_logs module 'concurrent_scan'/'review_scan'). Intake-UI: scan-knoppen + `{#key}`-reseed van AutoSaveField na scan + foutmelding.
