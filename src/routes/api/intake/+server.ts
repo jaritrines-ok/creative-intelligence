@@ -290,8 +290,10 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 					.map((c) => ({
 						naam: (c.naam ?? '').trim(),
 						url: (c.url ?? '').trim(),
+						meta_ad_library: (c.meta_ad_library ?? '').trim(),
 						invalshoeken: (c.invalshoeken ?? '').trim(),
 						website_taal: (c.website_taal ?? '').trim(),
+						tiktok_observaties: (c.tiktok_observaties ?? '').trim(),
 						kansen: (c.kansen ?? '').trim()
 					}));
 				const bron4 = (res.data.bron4 ?? [])

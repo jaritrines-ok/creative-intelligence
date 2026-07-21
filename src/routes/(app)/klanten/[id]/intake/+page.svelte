@@ -232,8 +232,10 @@
 	interface ConcurrentVoorstel {
 		naam: string;
 		url: string;
+		meta_ad_library: string;
 		invalshoeken: string;
 		website_taal: string;
+		tiktok_observaties: string;
 		kansen: string;
 	}
 	interface ReviewVoorstel {
@@ -398,7 +400,14 @@
 				const bestaand = bron3.find((r) => normTekst(r.naam) === normTekst(c.naam) && normTekst(c.naam) !== '');
 				if (bestaand) {
 					const patch: Record<string, string> = {};
-					for (const k of ['url', 'invalshoeken', 'website_taal', 'kansen'] as const) {
+					for (const k of [
+						'url',
+						'meta_ad_library',
+						'invalshoeken',
+						'website_taal',
+						'tiktok_observaties',
+						'kansen'
+					] as const) {
 						const nieuw = c[k]?.trim();
 						if (!nieuw) continue;
 						const huidig = ((bestaand as Record<string, string | null>)[k] ?? '').trim();
@@ -417,8 +426,10 @@
 						velden: {
 							naam: c.naam,
 							url: c.url,
+							meta_ad_library: c.meta_ad_library,
 							invalshoeken: c.invalshoeken,
 							website_taal: c.website_taal,
+							tiktok_observaties: c.tiktok_observaties,
 							kansen: c.kansen
 						}
 					});
@@ -919,14 +930,20 @@
 			<p class="font-medium text-foreground">
 				{c.naam}{#if c.url}<span class="font-normal text-muted-foreground"> · {c.url}</span>{/if}
 			</p>
+			{#if c.meta_ad_library}
+				<p class="whitespace-pre-wrap"><span class="text-muted-foreground">Ad Library:</span> {c.meta_ad_library}</p>
+			{/if}
 			{#if c.invalshoeken}
-				<p><span class="text-muted-foreground">Invalshoeken:</span> {c.invalshoeken}</p>
+				<p class="whitespace-pre-wrap"><span class="text-muted-foreground">Invalshoeken:</span> {c.invalshoeken}</p>
 			{/if}
 			{#if c.website_taal}
-				<p><span class="text-muted-foreground">Taal:</span> {c.website_taal}</p>
+				<p class="whitespace-pre-wrap"><span class="text-muted-foreground">Taal:</span> {c.website_taal}</p>
+			{/if}
+			{#if c.tiktok_observaties}
+				<p class="whitespace-pre-wrap"><span class="text-muted-foreground">TikTok:</span> {c.tiktok_observaties}</p>
 			{/if}
 			{#if c.kansen}
-				<p><span class="text-muted-foreground">Kansen:</span> {c.kansen}</p>
+				<p class="whitespace-pre-wrap"><span class="text-muted-foreground">Kansen:</span> {c.kansen}</p>
 			{/if}
 		</div>
 	</label>
