@@ -94,15 +94,18 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 		case 'bron3.insert':
 		case 'bron4.insert': {
 			const tabel = type === 'bron3.insert' ? 'intake_bron3_concurrenten' : 'intake_bron4';
+			const velden = type === 'bron3.insert' ? BRON3_VELDEN : BRON4_VELDEN;
 			const clientId = String(body.clientId ?? '');
 			if (!clientId) error(400, 'Ontbrekende klant');
+			// Optionele beginwaarden (bijv. uit een document-analyse) direct meenemen.
+			const patch = schoonPatch(body.velden, velden);
 			const { data, error: dbFout } = await sb
 				.from(tabel)
-				.insert({ client_id: clientId })
-				.select('id')
+				.insert({ client_id: clientId, ...patch })
+				.select('*')
 				.single();
 			if (dbFout || !data) error(500, dbFout?.message ?? 'Aanmaken mislukt');
-			return json({ id: data.id });
+			return json({ id: data.id, rij: data });
 		}
 
 		case 'bron3.update':
@@ -281,9 +284,29 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, user }
 						.filter((a) => geldig.has(a.vraag_nummer) && a.antwoord && a.antwoord.trim().length > 0)
 						.map((a) => ({ vraag_nummer: a.vraag_nummer, antwoord: a.antwoord.trim() }));
 
+				// Concurrenten: alleen met een naam. Reviews: alleen met een samenvatting.
+				const bron3 = (res.data.bron3 ?? [])
+					.filter((c) => c?.naam && c.naam.trim().length > 0)
+					.map((c) => ({
+						naam: (c.naam ?? '').trim(),
+						url: (c.url ?? '').trim(),
+						invalshoeken: (c.invalshoeken ?? '').trim(),
+						website_taal: (c.website_taal ?? '').trim(),
+						kansen: (c.kansen ?? '').trim()
+					}));
+				const bron4 = (res.data.bron4 ?? [])
+					.filter((r) => r?.samenvatting && r.samenvatting.trim().length > 0)
+					.map((r) => ({
+						platform: (r.platform ?? '').trim(),
+						bron_naam: (r.bron_naam ?? '').trim(),
+						samenvatting: (r.samenvatting ?? '').trim()
+					}));
+
 				return json({
 					bron1: filter(res.data.bron1, BRON1_NUMMERS),
-					bron2: filter(res.data.bron2, BRON2_NUMMERS)
+					bron2: filter(res.data.bron2, BRON2_NUMMERS),
+					bron3,
+					bron4
 				});
 			} catch (e) {
 				const msg = e instanceof Error ? e.message : 'onbekende fout';

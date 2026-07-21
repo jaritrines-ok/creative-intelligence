@@ -224,9 +224,28 @@
 
 	// ---- Document uploaden → intake automatisch invullen ----
 	type ParseBron = 'bron1' | 'bron2';
+	type Modus = 'aanvullen' | 'overschrijven';
 	interface GeparseerdAntwoord {
 		vraag_nummer: number;
 		antwoord: string;
+	}
+	interface ConcurrentVoorstel {
+		naam: string;
+		url: string;
+		invalshoeken: string;
+		website_taal: string;
+		kansen: string;
+	}
+	interface ReviewVoorstel {
+		platform: string;
+		bron_naam: string;
+		samenvatting: string;
+	}
+	interface Voorstel {
+		bron1: GeparseerdAntwoord[];
+		bron2: GeparseerdAntwoord[];
+		bron3: ConcurrentVoorstel[];
+		bron4: ReviewVoorstel[];
 	}
 	const B1 = new Map(BRON1_VRAGEN.map((v) => [v.nummer, v]));
 	const B2 = new Map(BRON2_VRAGEN.map((v) => [v.nummer, v]));
@@ -237,10 +256,20 @@
 	let parsing = $state(false);
 	let toepassen = $state(false);
 	let parseFout = $state<string | null>(null);
-	let voorstel = $state<{ bron1: GeparseerdAntwoord[]; bron2: GeparseerdAntwoord[] } | null>(null);
+	let voorstel = $state<Voorstel | null>(null);
 	let gekozen = $state<Set<string>>(new Set());
+	// Per al-gevuld Bron 1/2-veld: 'aanvullen' (default) of 'overschrijven'.
+	let modus = $state<Record<string, Modus>>({});
 	// Reseed-teller: forceert AutoSaveField-velden opnieuw te renderen na toepassen.
 	let reseed = $state(0);
+
+	const normTekst = (v: string | null | undefined) => (v ?? '').trim().toLowerCase();
+	function aantalVoorstel(v: Voorstel) {
+		return v.bron1.length + v.bron2.length + v.bron3.length + v.bron4.length;
+	}
+	function setModus(s: string, m: Modus) {
+		modus = { ...modus, [s]: m };
+	}
 
 	function sleutel(bron: ParseBron, nummer: number) {
 		return `${bron}:${nummer}`;
@@ -261,6 +290,8 @@
 		parseFout = null;
 		docTekst = '';
 		bestandNaam = '';
+		gekozen = new Set();
+		modus = {};
 	}
 
 	async function kiesBestand(e: Event & { currentTarget: HTMLInputElement }) {
@@ -291,15 +322,31 @@
 				body: JSON.stringify({ type: 'parse', clientId, tekst: t })
 			});
 			if (!res.ok) throw new Error((await res.text().catch(() => '')) || 'Analyse mislukt');
-			const data = (await res.json()) as { bron1: GeparseerdAntwoord[]; bron2: GeparseerdAntwoord[] };
-			voorstel = { bron1: data.bron1 ?? [], bron2: data.bron2 ?? [] };
-			// Standaard: nieuwe (lege) velden aangevinkt, overschrijvingen uitgevinkt.
+			const data = (await res.json()) as Voorstel;
+			voorstel = {
+				bron1: data.bron1 ?? [],
+				bron2: data.bron2 ?? [],
+				bron3: data.bron3 ?? [],
+				bron4: data.bron4 ?? []
+			};
+			// Standaard: alles aangevinkt. Al-gevulde Bron 1/2-velden krijgen modus 'aanvullen'
+			// (Bron 3/4 vullen sowieso aan / maken nieuwe rijen).
 			const sel = new Set<string>();
-			for (const a of voorstel.bron1)
-				if (!heeftInhoud(huidigAntwoord('bron1', a.vraag_nummer))) sel.add(sleutel('bron1', a.vraag_nummer));
-			for (const a of voorstel.bron2)
-				if (!heeftInhoud(huidigAntwoord('bron2', a.vraag_nummer))) sel.add(sleutel('bron2', a.vraag_nummer));
+			const md: Record<string, Modus> = {};
+			for (const a of voorstel.bron1) {
+				const s = sleutel('bron1', a.vraag_nummer);
+				sel.add(s);
+				if (heeftInhoud(huidigAntwoord('bron1', a.vraag_nummer))) md[s] = 'aanvullen';
+			}
+			for (const a of voorstel.bron2) {
+				const s = sleutel('bron2', a.vraag_nummer);
+				sel.add(s);
+				if (heeftInhoud(huidigAntwoord('bron2', a.vraag_nummer))) md[s] = 'aanvullen';
+			}
+			voorstel.bron3.forEach((_, i) => sel.add(`bron3:${i}`));
+			voorstel.bron4.forEach((_, i) => sel.add(`bron4:${i}`));
 			gekozen = sel;
+			modus = md;
 		} catch (e) {
 			parseFout = e instanceof Error ? e.message : 'Analyse mislukt';
 		} finally {
@@ -314,27 +361,94 @@
 		gekozen = next;
 	}
 
+	/** Eindwaarde voor een Bron 1/2-veld: aanvullen (samenvoegen) of overschrijven. */
+	function eindwaarde(bron: ParseBron, a: GeparseerdAntwoord): string {
+		const huidig = huidigAntwoord(bron, a.vraag_nummer) ?? '';
+		const m = modus[sleutel(bron, a.vraag_nummer)] ?? 'aanvullen';
+		return heeftInhoud(huidig) && m === 'aanvullen' ? `${huidig.trim()}\n${a.antwoord}` : a.antwoord;
+	}
+
 	async function pasToe() {
 		if (!voorstel) return;
 		const b1 = voorstel.bron1.filter((a) => gekozen.has(sleutel('bron1', a.vraag_nummer)));
 		const b2 = voorstel.bron2.filter((a) => gekozen.has(sleutel('bron2', a.vraag_nummer)));
-		if (b1.length === 0 && b2.length === 0) {
+		const b3 = voorstel.bron3.filter((_, i) => gekozen.has(`bron3:${i}`));
+		const b4 = voorstel.bron4.filter((_, i) => gekozen.has(`bron4:${i}`));
+		if (!b1.length && !b2.length && !b3.length && !b4.length) {
 			sluitUpload();
 			return;
 		}
 		toepassen = true;
 		parseFout = null;
 		try {
+			// --- Bron 1/2: aanvullen of overschrijven (client berekent de eindwaarde) ---
 			if (b1.length) {
-				for (const a of b1) bron1Antw[a.vraag_nummer] = a.antwoord;
-				await postIntake({ type: 'bulk', clientId, bron: 'bron1', antwoorden: b1 });
+				const rows = b1.map((a) => ({ vraag_nummer: a.vraag_nummer, antwoord: eindwaarde('bron1', a) }));
+				for (const a of rows) bron1Antw[a.vraag_nummer] = a.antwoord;
+				await postIntake({ type: 'bulk', clientId, bron: 'bron1', antwoorden: rows });
 			}
 			if (b2.length) {
-				for (const a of b2) bron2Antw[a.vraag_nummer] = a.antwoord;
-				await postIntake({ type: 'bulk', clientId, bron: 'bron2', antwoorden: b2 });
+				const rows = b2.map((a) => ({ vraag_nummer: a.vraag_nummer, antwoord: eindwaarde('bron2', a) }));
+				for (const a of rows) bron2Antw[a.vraag_nummer] = a.antwoord;
+				await postIntake({ type: 'bulk', clientId, bron: 'bron2', antwoorden: rows });
 			}
+
+			// --- Bron 3: bestaande concurrent (zelfde naam) aanvullen, anders nieuwe rij ---
+			for (const c of b3) {
+				const bestaand = bron3.find((r) => normTekst(r.naam) === normTekst(c.naam) && normTekst(c.naam) !== '');
+				if (bestaand) {
+					const patch: Record<string, string> = {};
+					for (const k of ['url', 'invalshoeken', 'website_taal', 'kansen'] as const) {
+						const nieuw = c[k]?.trim();
+						if (!nieuw) continue;
+						const huidig = ((bestaand as Record<string, string | null>)[k] ?? '').trim();
+						const waarde = huidig ? `${huidig}\n${nieuw}` : nieuw;
+						patch[k] = waarde;
+						(bestaand as Record<string, unknown>)[k] = waarde;
+					}
+					if (Object.keys(patch).length) {
+						await postIntake({ type: 'bron3.update', id: bestaand.id, patch });
+						scanKey[bestaand.id] = (scanKey[bestaand.id] ?? 0) + 1;
+					}
+				} else {
+					const { rij } = await postIntake<{ rij: (typeof bron3)[number] }>({
+						type: 'bron3.insert',
+						clientId,
+						velden: {
+							naam: c.naam,
+							url: c.url,
+							invalshoeken: c.invalshoeken,
+							website_taal: c.website_taal,
+							kansen: c.kansen
+						}
+					});
+					bron3.push(rij);
+				}
+			}
+
+			// --- Bron 4: bestaande bron (zelfde bron_naam) aanvullen, anders nieuwe rij ---
+			for (const r of b4) {
+				const bestaand = r.bron_naam
+					? bron4.find((x) => normTekst(x.bron_naam) === normTekst(r.bron_naam))
+					: undefined;
+				if (bestaand) {
+					const huidig = (bestaand.ruwe_tekst ?? '').trim();
+					const waarde = huidig ? `${huidig}\n\n${r.samenvatting}` : r.samenvatting;
+					bestaand.ruwe_tekst = waarde;
+					await postIntake({ type: 'bron4.update', id: bestaand.id, patch: { ruwe_tekst: waarde } });
+					scanKey[bestaand.id] = (scanKey[bestaand.id] ?? 0) + 1;
+				} else {
+					const { rij } = await postIntake<{ rij: (typeof bron4)[number] }>({
+						type: 'bron4.insert',
+						clientId,
+						velden: { platform: r.platform, bron_naam: r.bron_naam, ruwe_tekst: r.samenvatting }
+					});
+					bron4.push(rij);
+				}
+			}
+
 			reseed++;
-			actief = b1.length ? 'bron1' : 'bron2';
+			actief = b1.length ? 'bron1' : b2.length ? 'bron2' : b3.length ? 'bron3' : 'bron4';
 			sluitUpload();
 		} catch (e) {
 			parseFout = e instanceof Error ? e.message : 'Opslaan mislukt';
@@ -714,8 +828,73 @@
 {#snippet regel(bron: ParseBron, a: GeparseerdAntwoord)}
 	{@const v = vraagVan(bron, a.vraag_nummer)}
 	{@const huidig = huidigAntwoord(bron, a.vraag_nummer)}
-	{@const overschrijft = heeftInhoud(huidig)}
+	{@const gevuld = heeftInhoud(huidig)}
 	{@const s = sleutel(bron, a.vraag_nummer)}
+	<div
+		class={cn(
+			'rounded-lg border p-3 text-sm transition-colors',
+			gekozen.has(s) ? 'border-primary bg-primary/5' : 'border-border'
+		)}
+	>
+		<label class="flex cursor-pointer gap-3">
+			<input
+				type="checkbox"
+				checked={gekozen.has(s)}
+				onchange={() => toggleKeuze(s)}
+				class="mt-0.5 size-4 shrink-0 accent-[var(--brand-green)]"
+			/>
+			<div class="min-w-0 space-y-1">
+				<div class="flex flex-wrap items-center gap-1.5">
+					{#if v?.categorie}
+						<span class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{v.categorie}</span>
+					{/if}
+					{#if gevuld}
+						<span class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
+							veld al ingevuld
+						</span>
+					{/if}
+				</div>
+				<p class="font-medium text-foreground">{v?.tekst ?? `Vraag ${a.vraag_nummer}`}</p>
+				<p class="whitespace-pre-wrap text-foreground">{a.antwoord}</p>
+				{#if gevuld}
+					<p class="whitespace-pre-wrap text-xs text-muted-foreground">Huidig: {huidig}</p>
+				{/if}
+			</div>
+		</label>
+		{#if gevuld && gekozen.has(s)}
+			<div class="mt-2 flex gap-1.5 pl-7">
+				<button
+					type="button"
+					onclick={() => setModus(s, 'aanvullen')}
+					class={cn(
+						'rounded-md border px-2 py-0.5 text-xs',
+						(modus[s] ?? 'aanvullen') === 'aanvullen'
+							? 'border-brand-green bg-brand-mint/50 font-medium text-brand-green'
+							: 'border-border text-muted-foreground hover:bg-muted'
+					)}
+				>
+					Aanvullen
+				</button>
+				<button
+					type="button"
+					onclick={() => setModus(s, 'overschrijven')}
+					class={cn(
+						'rounded-md border px-2 py-0.5 text-xs',
+						modus[s] === 'overschrijven'
+							? 'border-brand-green bg-brand-mint/50 font-medium text-brand-green'
+							: 'border-border text-muted-foreground hover:bg-muted'
+					)}
+				>
+					Overschrijven
+				</button>
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet regelConcurrent(c: ConcurrentVoorstel, i: number)}
+	{@const s = `bron3:${i}`}
+	{@const bestaat = bron3.some((r) => normTekst(r.naam) === normTekst(c.naam) && normTekst(c.naam) !== '')}
 	<label
 		class={cn(
 			'flex cursor-pointer gap-3 rounded-lg border p-3 text-sm transition-colors',
@@ -730,20 +909,58 @@
 		/>
 		<div class="min-w-0 space-y-1">
 			<div class="flex flex-wrap items-center gap-1.5">
-				{#if v?.categorie}
-					<span class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{v.categorie}</span>
-				{/if}
-				{#if overschrijft}
+				<span class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">Concurrent</span>
+				{#if bestaat}
 					<span class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
-						overschrijft huidig antwoord
+						bestaat al → aanvullen
 					</span>
 				{/if}
 			</div>
-			<p class="font-medium text-foreground">{v?.tekst ?? `Vraag ${a.vraag_nummer}`}</p>
-			<p class="whitespace-pre-wrap text-foreground">{a.antwoord}</p>
-			{#if overschrijft}
-				<p class="whitespace-pre-wrap text-xs text-muted-foreground">Huidig: {huidig}</p>
+			<p class="font-medium text-foreground">
+				{c.naam}{#if c.url}<span class="font-normal text-muted-foreground"> · {c.url}</span>{/if}
+			</p>
+			{#if c.invalshoeken}
+				<p><span class="text-muted-foreground">Invalshoeken:</span> {c.invalshoeken}</p>
 			{/if}
+			{#if c.website_taal}
+				<p><span class="text-muted-foreground">Taal:</span> {c.website_taal}</p>
+			{/if}
+			{#if c.kansen}
+				<p><span class="text-muted-foreground">Kansen:</span> {c.kansen}</p>
+			{/if}
+		</div>
+	</label>
+{/snippet}
+
+{#snippet regelReview(r: ReviewVoorstel, i: number)}
+	{@const s = `bron4:${i}`}
+	{@const bestaat = !!r.bron_naam && bron4.some((x) => normTekst(x.bron_naam) === normTekst(r.bron_naam))}
+	<label
+		class={cn(
+			'flex cursor-pointer gap-3 rounded-lg border p-3 text-sm transition-colors',
+			gekozen.has(s) ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+		)}
+	>
+		<input
+			type="checkbox"
+			checked={gekozen.has(s)}
+			onchange={() => toggleKeuze(s)}
+			class="mt-0.5 size-4 shrink-0 accent-[var(--brand-green)]"
+		/>
+		<div class="min-w-0 space-y-1">
+			<div class="flex flex-wrap items-center gap-1.5">
+				<span class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">Review</span>
+				{#if r.platform}
+					<span class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{r.platform}</span>
+				{/if}
+				{#if bestaat}
+					<span class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
+						bestaat al → aanvullen
+					</span>
+				{/if}
+			</div>
+			{#if r.bron_naam}<p class="font-medium text-foreground">{r.bron_naam}</p>{/if}
+			<p class="whitespace-pre-wrap text-foreground">{r.samenvatting}</p>
 		</div>
 	</label>
 {/snippet}
@@ -782,10 +999,10 @@
 			<div class="flex-1 overflow-y-auto px-5 py-4">
 				{#if !voorstel}
 					<p class="mb-3 text-sm text-muted-foreground">
-						Plak hieronder de tekst van een klantgesprek of ingevuld intake-document (bijv. uit een
-						Google Doc: alles selecteren → kopiëren → plakken), of upload een <code>.txt</code>/<code>.md</code>-bestand.
-						Claude leest het en stelt voor welke intake-vragen ermee ingevuld kunnen worden — jij bepaalt
-						daarna wat je overneemt.
+						Plak hieronder de tekst van een klantgesprek, reviews-uitdraai, concurrentie-analyse of ander
+						intake-document (bijv. uit een Google Doc: alles selecteren → kopiëren → plakken), of upload een
+						<code>.txt</code>/<code>.md</code>-bestand. Claude leest het en verdeelt de inhoud over de juiste
+						bronnen (klantgesprek, interne interviews, concurrentie, reviews) — jij bepaalt wat je overneemt.
 					</p>
 
 					<Textarea
@@ -821,14 +1038,15 @@
 							{parseFout}
 						</p>
 					{/if}
-				{:else if voorstel.bron1.length === 0 && voorstel.bron2.length === 0}
+				{:else if aantalVoorstel(voorstel) === 0}
 					<p class="rounded-lg border border-dashed bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-						Geen bruikbare antwoorden gevonden in dit document. Probeer meer of andere tekst.
+						Geen bruikbare informatie gevonden in dit document. Probeer meer of andere tekst.
 					</p>
 				{:else}
 					<p class="mb-3 text-sm text-muted-foreground">
-						Claude vond {voorstel.bron1.length + voorstel.bron2.length} mogelijke antwoorden. Vink aan wat je
-						wilt overnemen. Velden die al ingevuld zijn staan standaard uit.
+						Claude vond {aantalVoorstel(voorstel)} voorstellen en verdeelde ze over de juiste bronnen. Vink
+						aan wat je wilt overnemen. Al ingevulde Bron 1/2-velden staan op <strong>aanvullen</strong> —
+						zet op overschrijven als je ze wilt vervangen.
 					</p>
 					{#if voorstel.bron1.length}
 						<h3 class="mb-2 text-sm font-semibold text-brand-green">Klantgesprek (Bron 1)</h3>
@@ -840,9 +1058,25 @@
 					{/if}
 					{#if voorstel.bron2.length}
 						<h3 class="mb-2 text-sm font-semibold text-brand-green">Interne interviews (Bron 2)</h3>
-						<div class="space-y-2">
+						<div class="mb-4 space-y-2">
 							{#each voorstel.bron2 as a (a.vraag_nummer)}
 								{@render regel('bron2', a)}
+							{/each}
+						</div>
+					{/if}
+					{#if voorstel.bron3.length}
+						<h3 class="mb-2 text-sm font-semibold text-brand-green">Concurrentie (Bron 3)</h3>
+						<div class="mb-4 space-y-2">
+							{#each voorstel.bron3 as c, i (i)}
+								{@render regelConcurrent(c, i)}
+							{/each}
+						</div>
+					{/if}
+					{#if voorstel.bron4.length}
+						<h3 class="mb-2 text-sm font-semibold text-brand-green">Reviews (Bron 4)</h3>
+						<div class="space-y-2">
+							{#each voorstel.bron4 as r, i (i)}
+								{@render regelReview(r, i)}
 							{/each}
 						</div>
 					{/if}
@@ -857,7 +1091,7 @@
 
 			<!-- Footer -->
 			<div class="flex items-center justify-between gap-3 border-t px-5 py-3.5">
-				{#if voorstel && !(voorstel.bron1.length === 0 && voorstel.bron2.length === 0)}
+				{#if voorstel && aantalVoorstel(voorstel) > 0}
 					<span class="text-xs text-muted-foreground">{gekozen.size} geselecteerd</span>
 					<div class="flex gap-2">
 						<Button variant="ghost" onclick={() => (voorstel = null)} disabled={toepassen}>

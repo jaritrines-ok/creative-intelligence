@@ -71,6 +71,13 @@ Alle generaties gebruiken **structured outputs** (JSON-schema → gegarandeerd v
 
 ## Wijzigingen (nieuwste boven)
 
+### 2026-07-17 — Document-upload: routeert naar 4 bronnen + aanvullen i.p.v. overschrijven (branch)
+- **Wat:** de document-analyse verdeelt de inhoud nu over **alle vier de bronnen** i.p.v. alleen Bron 1/2. Een reviews-uitdraai gaat naar **Bron 4** (samengevat in Positief/Negatief/Gaps), concurrentie-info naar **Bron 3** (per concurrent: invalshoeken/website-taal/kansen), eindklant-interview naar Bron 1/2. En al ingevulde velden worden standaard **aangevuld** (samengevoegd) i.p.v. overschreven — per Bron 1/2-veld te kiezen (Aanvullen/Overschrijven); Bron 3 matcht op naam (aanvullen of nieuwe rij), Bron 4 op bron_naam.
+- **Aanleiding:** gebruiker: (1) tweede document overschreef i.p.v. aanvullen; (2) een reviews-uitdraai werd op klantgesprek/interne-interview-vragen gemapt i.p.v. reviews/concurrentie.
+- **Bestanden:** `intake-parser.ts` (schema+prompt: bron1-4 routering), `api/intake` (`parse` geeft bron3/bron4 terug; `bron3.insert`/`bron4.insert` accepteren nu beginwaarden + geven de rij terug), `intake/+page.svelte` (upload-modal toont Bron 3/4-secties, aanvullen/overschrijven-toggle, merge-logica op naam/bron_naam, reseed via bestaande scanKey).
+- **Verificatie:** `svelte-check` 0 fouten. Nog end-to-end te testen (login + Claude) → branch `intake-routing`.
+- **Migratie:** geen.
+
 ### 2026-07-16 — Creative Loop compact op werk-tabs · `51df67c`
 - **Wat:** de volledige ronde Creative Loop blijft op de **overzicht-tab**; op alle **andere tabs** een nieuwe **compacte horizontale stepper** (`CreativeLoopCompact.svelte`) — 4 fases (Intake→Trigger Map→Matrix→Sprint), huidige gemarkeerd, afgeronde met groen bolletje, klikbaar naar de fase-tab. Layout kiest op basis van `pad === base`. Scheelt veel verticale ruimte op de werk-tabs.
 - **Verificatie:** `svelte-check` 0 fouten; gebruiker akkoord. Gemerged naar main + live.
