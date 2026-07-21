@@ -71,7 +71,18 @@ Alle generaties gebruiken **structured outputs** (JSON-schema → gegarandeerd v
 
 ## Wijzigingen (nieuwste boven)
 
-### 2026-07-17 — Document-upload: routeert naar 4 bronnen + aanvullen i.p.v. overschrijven (branch)
+### 2026-07-17 — Klantomgeving: sidebar verbergt andere klanten binnen een klant · `55416e5`
+- **Wat:** binnen `/klanten/[id]` toont de sidebar alleen de huidige klant (naam + status, kopje "Klantomgeving") + een "← Alle klanten"-teruglink; de volledige klantenlijst is dan verborgen. Op het hoofdoverzicht blijft de lijst zichtbaar. Belangrijk voor klantpresentaties (geen andere klantnamen in beeld).
+- **Verificatie:** `svelte-check` 0 fouten; gebruiker akkoord. Live.
+- **Migratie:** geen.
+
+### 2026-07-17 — Rijkere concurrentie-extractie: Meta Ad Library-veld + uitputtender · `309268d`
+- **Wat:** document-parser Bron 3 kreeg `meta_ad_library` + `tiktok_observaties` velden — ad-library-data (langlopende formats, funnelverdeling, video-ratio) landt nu in het juiste veld i.p.v. in "invalshoeken". Prompt dwingt diepgang af (bullets per veld, kwantificeren, niets weglaten); extractie-effort low→medium. Modal toont + past de nieuwe velden toe.
+- **Aanleiding:** gebruiker: te dunne velden en "Lang draaiende ad formats" bleef leeg.
+- **Verificatie:** `svelte-check` 0 fouten; gebruiker akkoord. Live.
+- **Migratie:** geen (`meta_ad_library`/`tiktok_observaties` bestonden al als kolommen).
+
+### 2026-07-17 — Document-upload: routeert naar 4 bronnen + aanvullen i.p.v. overschrijven · `08a8f50`
 - **Wat:** de document-analyse verdeelt de inhoud nu over **alle vier de bronnen** i.p.v. alleen Bron 1/2. Een reviews-uitdraai gaat naar **Bron 4** (samengevat in Positief/Negatief/Gaps), concurrentie-info naar **Bron 3** (per concurrent: invalshoeken/website-taal/kansen), eindklant-interview naar Bron 1/2. En al ingevulde velden worden standaard **aangevuld** (samengevoegd) i.p.v. overschreven — per Bron 1/2-veld te kiezen (Aanvullen/Overschrijven); Bron 3 matcht op naam (aanvullen of nieuwe rij), Bron 4 op bron_naam.
 - **Aanleiding:** gebruiker: (1) tweede document overschreef i.p.v. aanvullen; (2) een reviews-uitdraai werd op klantgesprek/interne-interview-vragen gemapt i.p.v. reviews/concurrentie.
 - **Bestanden:** `intake-parser.ts` (schema+prompt: bron1-4 routering), `api/intake` (`parse` geeft bron3/bron4 terug; `bron3.insert`/`bron4.insert` accepteren nu beginwaarden + geven de rij terug), `intake/+page.svelte` (upload-modal toont Bron 3/4-secties, aanvullen/overschrijven-toggle, merge-logica op naam/bron_naam, reseed via bestaande scanKey).
